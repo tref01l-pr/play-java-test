@@ -1,0 +1,35 @@
+package Contracts.Requests;
+
+import org.bson.types.ObjectId;
+
+import java.util.List;
+
+public class UpdateToDoRequest {
+    private ObjectId id;
+    private String title;
+    private String description;
+    private List<String> tags;
+
+    public UpdateToDoRequest(ObjectId id, String title, String description, List<String> tags) {
+        this.id = id;
+        this.title = title;
+        this.description = description;
+        this.tags = tags;
+    }
+
+    public ObjectId getId() {
+        return id;
+    }
+
+    public String getTitle() {
+        return title;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public List<String> getTags() {
+        return tags;
+    }
+}
