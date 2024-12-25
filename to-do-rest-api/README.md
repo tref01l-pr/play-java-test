@@ -3,11 +3,9 @@ Play Framework + MongoDB Backend
 🚀 Getting Started
 1. Prerequisites
 Ensure you have the following installed:
-
 Java (JDK 11 or higher)
 sbt (Scala Build Tool)
 MongoDB (local or cloud instance)
-
 2. Clone the Repository
 ```git clone https://github.com/tref01l-pr/play-java-test.git```
 ```cd to-do-rest-api```
