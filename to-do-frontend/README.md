@@ -22,6 +22,6 @@ If PNPM is not installed, you can install it using:
 3. Install Dependencies
 ```pnpm install```
 
-4. if you have different uri "http://localhost:5173/", you have to change cors in backend project))
+4. if you have different uri "http://localhost:5173/", you have to change cors in the backend project))
 5. Start 
 ```pnpm run dev```
