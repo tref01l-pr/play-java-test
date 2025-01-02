@@ -1,5 +1,7 @@
 package services;
 
+import com.mongodb.client.gridfs.GridFSBucket;
+import com.mongodb.client.gridfs.GridFSBuckets;
 import com.mongodb.client.model.Indexes;
 import dev.morphia.Datastore;
 import dev.morphia.Morphia;
@@ -19,6 +21,7 @@ public class MongoDb {
     private final MongoClient mongoClient;
     private final MongoDatabase db;
     private final Datastore ds;
+    private final GridFSBucket gridFSBucket;
 
     //private final byte[] encryptionKey;
 
@@ -50,24 +53,12 @@ public class MongoDb {
                         new IndexOptions().unique(false)
                 );
 
+        gridFSBucket = GridFSBuckets.create(db);
 
         appLifecycle.addStopHook(() -> {
             mongoClient.close();
             return CompletableFuture.completedFuture(null);
         });
-
-       /* byte[] key = Hex.decode("0000000000000000000000000000000000000000000000000000000000000000");
-        try {
-            if (InputUtils.trimToNull(Config.Option.MONGODB_ENCRYPTION_KEY.get()) == null) {
-                throw new IllegalArgumentException("Variable is empty");
-            }
-            key = Hex.decode(Config.Option.MONGODB_ENCRYPTION_KEY.get());
-            if (key.length != 32) {
-                throw new IllegalArgumentException("Length is not 64 HEX characters (256 bit)");
-            }
-        } catch (Exception e) {
-        }*/
-        //encryptionKey = key;
     }
 
     public MongoDatabase get() {
@@ -77,9 +68,6 @@ public class MongoDb {
     public Datastore getDS() {
         return ds;
     }
-
-/*    public byte[] getEncryptionKey() {
-        return encryptionKey;
-    }*/
+    public GridFSBucket getGridFSBucket() { return gridFSBucket; }
 }
 

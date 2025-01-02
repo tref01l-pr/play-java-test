@@ -1,4 +1,8 @@
 import com.google.inject.AbstractModule;
+import com.google.inject.Inject;
+import com.mongodb.client.MongoDatabase;
+import com.mongodb.client.gridfs.GridFSBucket;
+import com.mongodb.client.gridfs.GridFSBuckets;
 import jwt.JwtControllerHelper;
 import jwt.JwtControllerHelperImpl;
 import jwt.JwtValidator;

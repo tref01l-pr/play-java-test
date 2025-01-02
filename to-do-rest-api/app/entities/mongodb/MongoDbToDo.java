@@ -4,6 +4,7 @@ import dev.morphia.annotations.Entity;
 import dev.morphia.annotations.Id;
 import dev.morphia.annotations.Indexed;
 import dev.morphia.annotations.Property;
+import models.FileMetadata;
 import org.bson.types.ObjectId;
 
 import java.util.Date;
@@ -29,6 +30,8 @@ public class MongoDbToDo {
     @Property("tags")
     @Indexed
     private List<String> tags;
+
+    private List<FileMetadata> files;
 
     public MongoDbToDo() {
         // dummy constructor for Morphia
@@ -87,5 +90,13 @@ public class MongoDbToDo {
 
     public void setTags(List<String> tags) {
         this.tags = tags;
+    }
+
+    public List<FileMetadata> getFiles() {
+        return files;
+    }
+
+    public void setFiles(List<FileMetadata> files) {
+        this.files = files;
     }
 }

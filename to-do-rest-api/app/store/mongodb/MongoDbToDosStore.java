@@ -52,6 +52,7 @@ public class MongoDbToDosStore implements ToDosStore {
         newToDo.setDescription(model.getDescription());
         newToDo.setCreatedAt(Date.from(ZonedDateTime.now(ZoneId.systemDefault()).toInstant()));
         newToDo.setTags(model.getTags());
+        newToDo.setFiles(model.getFiles());
 
         mongoDb.getDS().save(newToDo);
         return newToDo;

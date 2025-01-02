@@ -14,3 +14,6 @@ libraryDependencies += "org.mongodb" % "mongodb-driver-sync" % "4.9.1"
 libraryDependencies += "dev.morphia.morphia" % "morphia-core" % "2.4.14"
 libraryDependencies += "commons-codec" % "commons-codec" % "1.17.1"
 libraryDependencies += "org.bouncycastle" % "bcprov-jdk15on" % "1.70"
+
+libraryDependencies += "org.apache.pdfbox" % "pdfbox" % "3.0.3"
+libraryDependencies += "org.apache.pdfbox" % "pdfbox-tools" % "3.0.3"

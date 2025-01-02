@@ -15,18 +15,20 @@ public class ToDo {
     private String description;
     private Date createdAt;
     private List<String> tags;
+    private List<FileMetadata> files;
 
     public static final int MAX_TITLE_LENGTH = 255;
     public static final int MAX_DESCRIPTION_LENGTH = 1000;
     public static final int MAX_TAG_LENGTH = 50;
 
-    private ToDo(ObjectId _id, ObjectId userId, String title, String description, List<String> tags) {
+    private ToDo(ObjectId _id, ObjectId userId, String title, String description, List<String> tags, List<FileMetadata> files) {
         this._id = _id;
         this.userId = userId;
         this.title = title;
         this.description = description;
         this.createdAt = new Date();
         this.tags = tags;
+        this.files = files;
     }
 
     public ObjectId getId() {
@@ -51,6 +53,10 @@ public class ToDo {
 
     public Date getCreatedAt() {
         return createdAt;
+    }
+
+    public List<FileMetadata> getFiles() {
+        return files;
     }
 
 
@@ -103,7 +109,7 @@ public class ToDo {
                 .collect(Collectors.toList());
     }
 
-    public static ToDo create(ObjectId userId, String title, String description, List<String> tags) {
+    public static ToDo create(ObjectId userId, String title, String description, List<String> tags, List<FileMetadata> files) {
         tags = normalizeTags(tags);
         String validationError = validateCreate(userId, title, description, tags);
 
@@ -111,6 +117,6 @@ public class ToDo {
             throw new IllegalArgumentException(validationError);
         }
 
-        return new ToDo(null, userId, title, description, tags);
+        return new ToDo(null, userId, title, description, tags, files);
     }
 }
