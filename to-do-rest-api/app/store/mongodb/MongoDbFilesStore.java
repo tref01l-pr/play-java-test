@@ -116,36 +116,6 @@ public class MongoDbFilesStore implements FilesStore {
         zos.closeEntry();
     }
 
-    private void addFileFromGridFS(ZipOutputStream zos, FileMetadata fileMetadata) throws IOException {
-        GridFSBucket gridFSBucket = mongoDb.getGridFSBucket();
-
-        if (fileMetadata.getImageIds() == null || fileMetadata.getImageIds().isEmpty()) {
-            throw new FileNotFoundException("No image IDs found in FileMetadata");
-        }
-
-        for (ObjectId imageId : fileMetadata.getImageIds()) {
-            GridFSDownloadStream downloadStream = gridFSBucket.openDownloadStream(imageId);
-            if (downloadStream == null) {
-                throw new FileNotFoundException("File with ID " + imageId + " not found in GridFS");
-            }
-
-            String fileName = "files/" + imageId.toHexString() + ".dat";
-            ZipEntry entry = new ZipEntry(fileName);
-            zos.putNextEntry(entry);
-
-            try (InputStream inputStream = downloadStream) {
-                byte[] buffer = new byte[1024];
-                int length;
-                while ((length = inputStream.read(buffer)) > 0) {
-                    zos.write(buffer, 0, length);
-                }
-            } finally {
-                zos.closeEntry();
-                downloadStream.close();
-            }
-        }
-    }
-
     private void addImagesAsJpgFromGridFS(ZipOutputStream zos, FileMetadata fileMetadata) throws IOException {
         GridFSBucket gridFSBucket = mongoDb.getGridFSBucket();
 

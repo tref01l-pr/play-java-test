@@ -191,11 +191,11 @@ public class ToDosController {
             List<Http.MultipartFormData.FilePart<File>> fileParts = body.getFiles();
             List<FileMetadata> uploadedFiles = new ArrayList<>();
 
-            if (hasFileHashChanged(updateToDoRequest.getFiles(), toDoExist.getFiles())) {
+            if (hasFileHashChanged(updateToDoRequest.getFilesMetadata(), toDoExist.getFiles())) {
                 return Results.badRequest("Files can't be added with request");
             }
 
-            var filesToDelete = getFilesToDelete(updateToDoRequest.getFiles(), toDoExist.getFiles());
+            var filesToDelete = getFilesToDelete(updateToDoRequest.getFilesMetadata(), toDoExist.getFiles());
 
             try {
                 for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
@@ -208,7 +208,7 @@ public class ToDosController {
                 }
 
                 List<FileMetadata> unchangedFiles = toDoExist.getFiles().stream()
-                        .filter(existingFile -> updateToDoRequest.getFiles().stream()
+                        .filter(existingFile -> updateToDoRequest.getFilesMetadata().stream()
                                 .anyMatch(requestFile -> requestFile.getHash().equals(existingFile.getHash())))
                         .collect(Collectors.toList());
 
@@ -267,7 +267,8 @@ public class ToDosController {
 
                 return Results.ok(zipFile)
                         .as("application/zip")
-                        .withHeader("Content-Disposition", "attachment; filename=" + zipFile.getName());
+                        .withHeader("Content-Disposition", "attachment; filename=" + zipFile.getName())
+                        .withHeader("Access-Control-Expose-Headers", "Content-Disposition");
             } catch (IllegalArgumentException e) {
                 return Results.notFound("ToDo not found: " + e.getMessage());
             } catch (Exception e) {

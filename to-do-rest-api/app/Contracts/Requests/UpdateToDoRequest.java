@@ -1,6 +1,5 @@
 package Contracts.Requests;
 
-import models.FileMetadata;
 import org.bson.types.ObjectId;
 
 import java.util.List;
@@ -10,14 +9,14 @@ public class UpdateToDoRequest {
     private String title;
     private String description;
     private List<String> tags;
-    private List<FileMetadataRequest> files;
+    private List<FileMetadataRequest> filesMetadata;
 
-    public UpdateToDoRequest(ObjectId id, String title, String description, List<String> tags, List<FileMetadataRequest> files) {
+    public UpdateToDoRequest(ObjectId id, String title, String description, List<String> tags, List<FileMetadataRequest> filesMetadata) {
         this.id = id;
         this.title = title;
         this.description = description;
         this.tags = tags;
-        this.files = files;
+        this.filesMetadata = filesMetadata;
     }
 
     public ObjectId getId() {
@@ -36,5 +35,5 @@ public class UpdateToDoRequest {
         return tags;
     }
 
-    public List<FileMetadataRequest> getFiles() { return files; }
+    public List<FileMetadataRequest> getFilesMetadata() { return filesMetadata; }
 }

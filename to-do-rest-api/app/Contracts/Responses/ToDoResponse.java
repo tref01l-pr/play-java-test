@@ -13,19 +13,19 @@ public class ToDoResponse {
     private String description;
     private Date createdAt;
     private List<String> tags;
-    private List<FileMetadataResponse> files;
+    private List<FileMetadataResponse> filesMetadata;
 
-    public ToDoResponse(ObjectId id, String title, String description, Date createdAt, List<String> tags, List<FileMetadata> files) {
+    public ToDoResponse(ObjectId id, String title, String description, Date createdAt, List<String> tags, List<FileMetadata> filesMetadata) {
         this.id = id.toString();
         this.title = title;
         this.description = description;
         this.createdAt = createdAt;
         this.tags = tags;
-        List<FileMetadataResponse> filesToResponse = new ArrayList<>();
-        for (FileMetadata file : files) {
-            filesToResponse.add(new FileMetadataResponse(file.getFileName(), file.getFileType(), file.getHash(), file.getImageIds().size()));
+        List<FileMetadataResponse> filesMetadataToResponse = new ArrayList<>();
+        for (FileMetadata file : filesMetadata) {
+            filesMetadataToResponse.add(new FileMetadataResponse(file.getFileName(), file.getFileType(), file.getHash(), file.getImageIds().size()));
         }
-        this.files = filesToResponse;
+        this.filesMetadata = filesMetadataToResponse;
     }
 
     public String getId() {
@@ -48,5 +48,5 @@ public class ToDoResponse {
         return createdAt;
     }
 
-    public List<FileMetadataResponse> getFiles() { return files; }
+    public List<FileMetadataResponse> getFilesMetadata() { return filesMetadata; }
 }
