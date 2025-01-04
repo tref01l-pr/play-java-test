@@ -41,6 +41,7 @@
               :columns="columns"
               @edit="openEditModal"
               @delete="deleteTodo"
+              @export="exportTodo"
           />
         </div>
       </div>
@@ -67,7 +68,7 @@ const tasksStore = useToDosStore();
 const columns = computed(() => tasksStore.getTodoColumns)
 
 const rows = computed(() => tasksStore.getTodoList)
-console.log(rows.value);
+
 
 const toggleModal = () => {
   modalActive.value = !modalActive.value
@@ -84,9 +85,13 @@ const openEditModal = (id) => {
 const deleteTodo = (id) => {
   tasksStore.deleteToDoById(id)
 }
+const exportTodo = (id) => {
+  tasksStore.exportToDoById(id)
+}
 
 onMounted(() => {
   tasksStore.loadTodos()
+  console.log(rows.value);
 })
 </script>
 

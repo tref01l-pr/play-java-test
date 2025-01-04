@@ -4,7 +4,7 @@ import { useJwtStore } from "./stores/JwtStore.js";
 const instance = axios.create({
     baseURL: "http://localhost:9000",
     headers: {
-        "Content-type": "application/json",
+        "Content-type": "multipart/form-data",
     },
     withCredentials: true,
 });

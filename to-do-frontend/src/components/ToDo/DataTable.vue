@@ -33,9 +33,15 @@
           </button>
           <button
             @click="deleteTodo(row.id)"
-            class="flex items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 focus:outline-none focus:ring-4 focus:ring-green-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+            class="mr-2 flex items-center justify-center rounded-lg bg-red-700 px-4 py-2 text-sm font-medium text-white hover:bg-red-800 focus:outline-none focus:ring-4 focus:ring-green-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
           >
             Delete
+          </button>
+          <button
+              @click="exportTodo(row.id)"
+              class="flex items-center justify-center rounded-lg bg-green-700 px-4 py-2 text-sm font-medium text-white hover:bg-blue-800 focus:outline-none focus:ring-4 focus:ring-green-300 dark:bg-green-600 dark:hover:bg-green-700 dark:focus:ring-green-800"
+          >
+            Export
           </button>
         </td>
       </tr>
@@ -44,7 +50,7 @@
 </template>
 
 <script setup>
-const emit = defineEmits(['edit', 'delete'])
+const emit = defineEmits(['edit', 'delete', 'export'])
 
 const { rows, columns } = defineProps({
   rows: {
@@ -63,5 +69,9 @@ const editTodo = (todoId) => {
 
 const deleteTodo = (todoId) => {
   emit('delete', todoId)
+}
+
+const exportTodo = (todoId) => {
+  emit('export', todoId)
 }
 </script>

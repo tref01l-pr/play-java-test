@@ -7,7 +7,7 @@ class userService {
     }
 
     login(data) {
-        console.log(" login(data) " + data.email + " " + data.password);
+        console.log(" login(data) " + data.username + " " + data.password);
         return http.post("/login", data);
     }
 
@@ -24,15 +24,28 @@ class userService {
     }
 
     createToDo(data) {
-        return http.post("/todos", data);
+        return http.post("/todos", data, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
     }
 
     updateToDoById(data) {
-        return http.put("/todos", data);
+        return http.put("/todos", data, {
+            headers: {
+                "Content-Type": "multipart/form-data",
+            },
+        });
     }
 
     deleteToDoById(id) {
         return http.delete("/todos/" + id);
+    }
+
+    exportToDoById(id) {
+        return http.get("/todos/export/" + id,
+            { responseType: 'blob' });
     }
 }
 

@@ -21,6 +21,16 @@
           v-model="todo.tags"
           placeholder="Enter tags separated by commas"
       />
+      <TodoMetadataManager
+          label="FilesMetadata"
+          id="metadata"
+          v-model="todo.filesMetadata"
+      />
+      <TodoFilesManager
+          label="Files"
+          id="files"
+          v-model="todo.files"
+      />
     </div>
     <button
       type="submit"
@@ -36,7 +46,8 @@ import { ref, onMounted } from 'vue'
 import { useToDosStore } from '../../stores/ToDosStore.js'
 import TodoInput from './Form/TodoInput.vue'
 import TodoTextBox from './Form/TodoTextBox.vue'
-import TodoDropdown from './Form/TodoDropdown.vue'
+import TodoMetadataManager from './Form/TodoMetadataManager.vue'
+import TodoFilesManager from "./Form/TodoFilesManager.vue";
 
 const emit = defineEmits(['close-modal'])
 
@@ -51,7 +62,9 @@ const todo = ref({
   title: '',
   description: '',
   status: 'todo',
-  tags: ''
+  tags: '',
+  filesMetadata: [],
+  files: []
 })
 
 const statusList = [
@@ -97,7 +110,13 @@ const resetTodo = () => {
 onMounted(() => {
   if (props.todoId) {
     const fetchedTodo = tasksStore.getTodoById(props.todoId)
-    todo.value = { ...fetchedTodo }
+
+    todo.value = {
+      ...fetchedTodo,
+      tags: Array.isArray(fetchedTodo.tags) ? fetchedTodo.tags.join(', ') : fetchedTodo.tags,
+      filesMetadata: fetchedTodo.filesMetadata || []
+    }
+    console.log("todo.value:", todo.value)
   }
 })
 </script>
