@@ -39,6 +39,8 @@ PUT     /todos                          controllers.ToDosController.updateToDo(r
 + nocsrf
 DELETE  /todos/:toDoId                  controllers.ToDosController.deleteToDoById(request:play.mvc.Http.Request, toDoId:String)
 
+GET     /todos/export/:toDoId           controllers.ToDosController.exportToDoById(request:play.mvc.Http.Request, toDoId:String)
+
 # test
 # should be removed for build application
 

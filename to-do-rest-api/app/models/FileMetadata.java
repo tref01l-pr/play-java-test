@@ -1,12 +1,16 @@
 package models;
 
 import dev.morphia.annotations.Embedded;
+import dev.morphia.annotations.Entity;
+import dev.morphia.annotations.Id;
 import org.bson.types.ObjectId;
 
 import java.util.List;
 
-@Embedded
+@Entity(value = "files", useDiscriminator = false)
 public class FileMetadata {
+    @Id
+    private ObjectId _id;
     private String fileName;
     private String fileType;
     private String pdfHash;
@@ -30,7 +34,7 @@ public class FileMetadata {
         this.fileType = fileType;
     }
 
-    public String getPdfHash() {
+    public String getHash() {
         return pdfHash;
     }
 

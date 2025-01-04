@@ -23,8 +23,6 @@ public class MongoDb {
     private final Datastore ds;
     private final GridFSBucket gridFSBucket;
 
-    //private final byte[] encryptionKey;
-
     @Inject
     public MongoDb(ApplicationLifecycle appLifecycle) {
         String username = Config.get(Config.Option.MONGODB_USERNAME);
@@ -50,8 +48,7 @@ public class MongoDb {
         ds.getDatabase().getCollection("todos")
                 .createIndex(
                         Indexes.compoundIndex(Indexes.ascending("userId"), Indexes.ascending("tags")),
-                        new IndexOptions().unique(false)
-                );
+                        new IndexOptions().unique(false));
 
         gridFSBucket = GridFSBuckets.create(db);
 
@@ -69,5 +66,8 @@ public class MongoDb {
         return ds;
     }
     public GridFSBucket getGridFSBucket() { return gridFSBucket; }
+    public MongoClient getMongoClient() {
+        return mongoClient;
+    }
 }
 

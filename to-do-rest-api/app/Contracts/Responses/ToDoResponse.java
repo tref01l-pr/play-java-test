@@ -3,6 +3,7 @@ package Contracts.Responses;
 import models.FileMetadata;
 import org.bson.types.ObjectId;
 
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 
@@ -12,7 +13,7 @@ public class ToDoResponse {
     private String description;
     private Date createdAt;
     private List<String> tags;
-    private List<FileMetadata> files;
+    private List<FileMetadataResponse> files;
 
     public ToDoResponse(ObjectId id, String title, String description, Date createdAt, List<String> tags, List<FileMetadata> files) {
         this.id = id.toString();
@@ -20,7 +21,11 @@ public class ToDoResponse {
         this.description = description;
         this.createdAt = createdAt;
         this.tags = tags;
-        this.files = files;
+        List<FileMetadataResponse> filesToResponse = new ArrayList<>();
+        for (FileMetadata file : files) {
+            filesToResponse.add(new FileMetadataResponse(file.getFileName(), file.getFileType(), file.getHash(), file.getImageIds().size()));
+        }
+        this.files = filesToResponse;
     }
 
     public String getId() {
@@ -43,5 +48,5 @@ public class ToDoResponse {
         return createdAt;
     }
 
-    public List<FileMetadata> getFiles() { return files; }
+    public List<FileMetadataResponse> getFiles() { return files; }
 }

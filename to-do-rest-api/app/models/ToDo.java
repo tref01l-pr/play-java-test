@@ -2,10 +2,7 @@ package models;
 
 import org.bson.types.ObjectId;
 
-import java.util.Date;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Set;
+import java.util.*;
 import java.util.stream.Collectors;
 
 public class ToDo {
@@ -55,9 +52,7 @@ public class ToDo {
         return createdAt;
     }
 
-    public List<FileMetadata> getFiles() {
-        return files;
-    }
+    public List<FileMetadata> getFiles() { return files; }
 
 
     public List<String> getTags() {
@@ -103,6 +98,10 @@ public class ToDo {
     }
 
     private static List<String> normalizeTags(List<String> tags) {
+        if (tags == null) {
+            return List.of();
+        }
+
         return tags.stream()
                 .filter(tag -> tag != null && !tag.trim().isEmpty())
                 .map(tag -> tag.trim().toLowerCase())

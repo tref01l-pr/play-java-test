@@ -1,10 +1,13 @@
 package store.mongodb;
 
+import com.mongodb.client.model.Updates;
 import com.mongodb.client.result.DeleteResult;
 import dev.morphia.query.Query;
+import dev.morphia.query.filters.Filter;
 import dev.morphia.query.filters.Filters;
 import entities.mongodb.MongoDbToDo;
 import models.ToDo;
+import org.bson.conversions.Bson;
 import org.bson.types.ObjectId;
 import services.MongoDb;
 import store.ToDosStore;
@@ -12,6 +15,7 @@ import store.ToDosStore;
 import javax.inject.Inject;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -60,6 +64,7 @@ public class MongoDbToDosStore implements ToDosStore {
 
     @Override
     public MongoDbToDo update(ToDo model) {
+        Filter filter = Filters.eq("_id", model.getId());
         MongoDbToDo existingToDo = query().filter(Filters.eq("_id", model.getId())).first();
         if (existingToDo == null) {
             throw new IllegalArgumentException("ToDo with ID " + model.getId() + " not found.");
@@ -68,6 +73,22 @@ public class MongoDbToDosStore implements ToDosStore {
         existingToDo.setTitle(model.getTitle());
         existingToDo.setDescription(model.getDescription());
         existingToDo.setTags(model.getTags());
+        existingToDo.setFiles(model.getFiles());
+
+        List<Bson> updates = new ArrayList<>();
+        if (model.getTags() == null || model.getTags().isEmpty()) {
+            updates.add(Updates.unset("tags"));
+        }
+        if (model.getFiles() == null || model.getFiles().isEmpty()) {
+            updates.add(Updates.unset("files"));
+        }
+
+        if (!updates.isEmpty()) {
+            mongoDb.get().getCollection("todos").updateOne(
+                    new org.bson.Document("_id", model.getId()),
+                    Updates.combine(updates)
+            );
+        }
 
         mongoDb.getDS().merge(existingToDo);
         return existingToDo;

@@ -1,34 +1,25 @@
 package controllers;
 
 import Contracts.Requests.CreateToDoRequest;
+import Contracts.Requests.FileMetadataRequest;
 import Contracts.Requests.UpdateToDoRequest;
 import Contracts.Responses.ToDoResponse;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
-import com.mongodb.client.gridfs.GridFSBucket;
+import com.mongodb.client.ClientSession;
 import entities.mongodb.MongoDbToDo;
 import jwt.JwtControllerHelper;
-import jwt.VerifiedJwt;
 import models.FileMetadata;
 import models.ToDo;
-import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.io.RandomAccessRead;
-import org.apache.pdfbox.io.RandomAccessReadBuffer;
-import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.rendering.PDFRenderer;
-import org.bson.types.ObjectId;
 import play.libs.Json;
 import play.libs.concurrent.HttpExecutionContext;
 import play.mvc.Http;
 import services.MongoDb;
+import store.FilesStore;
 import store.ToDosStore;
 import play.mvc.Result;
 import play.mvc.Results;
 import store.UsersStore;
-import utils.PdfUtils;
-import play.libs.Files.TemporaryFile;
-import javax.imageio.ImageIO;
-import java.awt.image.BufferedImage;
+
 import java.io.*;
 import java.util.ArrayList;
 import java.util.List;
@@ -42,13 +33,15 @@ public class ToDosController {
     private final HttpExecutionContext ec;
     private final ToDosStore toDosStore;
     private final UsersStore usersStore;
+    private final FilesStore filesStore;
 
 
     @Inject
-    public ToDosController(HttpExecutionContext ec, ToDosStore toDosStore, UsersStore userStore) {
+    public ToDosController(HttpExecutionContext ec, ToDosStore toDosStore, UsersStore userStore, FilesStore filesStore) {
         this.ec = ec;
         this.toDosStore = toDosStore;
         this.usersStore = userStore;
+        this.filesStore = filesStore;
     }
 
     @Inject
@@ -150,42 +143,9 @@ public class ToDosController {
             List<FileMetadata> uploadedFiles = new ArrayList<>();
 
             try {
+
                 for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
-                    String fileName = filePart.getFilename();
-                    String contentType = filePart.getContentType();
-                    FileMetadata metadata = new FileMetadata();
-
-                    metadata.setFileName(fileName);
-                    metadata.setFileType(contentType);
-
-                    TemporaryFile tempFile = (TemporaryFile) filePart.getRef();
-                    File file = tempFile.path().toFile();
-                    try (InputStream fileStream = new BufferedInputStream(new FileInputStream(file))) {
-                        fileStream.mark(Integer.MAX_VALUE);
-                        String pdfHash = PdfUtils.calculatePdfHash(fileStream);
-                        metadata.setPdfHash(pdfHash);
-                        fileStream.reset();
-
-                        List<ObjectId> imageIds = new ArrayList<>();
-                        RandomAccessRead randomAccessRead = new RandomAccessReadBuffer(fileStream);
-
-                        try (PDDocument document = Loader.loadPDF(randomAccessRead)) {
-                            PDFRenderer pdfRenderer = new PDFRenderer(document);
-
-                            for (int page = 0; page < document.getNumberOfPages(); page++) {
-                                BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
-                                ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                                ImageIO.write(bim, "png", baos);
-                                ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
-
-                                ObjectId imageId = mongoDb.getGridFSBucket().uploadFromStream("page-" + page + ".png", bais);
-                                imageIds.add(imageId);
-                            }
-                        }
-                        metadata.setImageIds(imageIds);
-
-
-                    }
+                    FileMetadata metadata = filesStore.create(filePart);
                     uploadedFiles.add(metadata);
                 }
 
@@ -201,14 +161,23 @@ public class ToDosController {
     }
 
     public Result updateToDo(Http.Request request) {
-        JsonNode json = request.body().asJson();
+        Http.MultipartFormData<File> body = request.body().asMultipartFormData();
         return jwtControllerHelper.withAuthenticatedUser(request, userId -> {
-            if (json == null) {
-                return Results.badRequest("Invalid JSON data");
+            if (body == null) {
+                return Results.badRequest("Request must be multipart/form-data");
             }
 
-            UpdateToDoRequest updateToDoRequest = Json.fromJson(json, UpdateToDoRequest.class);
+            String[] jsonParts = body.asFormUrlEncoded().get("data");
+            if (jsonParts == null || jsonParts.length == 0) {
+                return Results.badRequest("Missing JSON part of the request");
+            }
 
+            String jsonPart = jsonParts[0];
+            if (jsonPart == null) {
+                return Results.badRequest("Missing JSON part of the request");
+            }
+
+            UpdateToDoRequest updateToDoRequest = Json.fromJson(Json.parse(jsonPart), UpdateToDoRequest.class);
             MongoDbToDo toDoExist = toDosStore.getById(updateToDoRequest.getId());
 
             if (toDoExist == null) {
@@ -219,19 +188,43 @@ public class ToDosController {
                 return Results.forbidden("To-Do does not belong to user");
             }
 
+            List<Http.MultipartFormData.FilePart<File>> fileParts = body.getFiles();
+            List<FileMetadata> uploadedFiles = new ArrayList<>();
+
+            if (hasFileHashChanged(updateToDoRequest.getFiles(), toDoExist.getFiles())) {
+                return Results.badRequest("Files can't be added with request");
+            }
+
+            var filesToDelete = getFilesToDelete(updateToDoRequest.getFiles(), toDoExist.getFiles());
+
             try {
-                //TODO remove null and make normal logic
-                ToDo toDo = ToDo.create(userId, updateToDoRequest.getTitle(), updateToDoRequest.getDescription(), updateToDoRequest.getTags(), null);
+                for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
+                    FileMetadata metadata = filesStore.create(filePart);
+                    uploadedFiles.add(metadata);
+                }
+
+                for (FileMetadata file : filesToDelete) {
+                    filesStore.removeByFileMetadata(file);
+                }
+
+                List<FileMetadata> unchangedFiles = toDoExist.getFiles().stream()
+                        .filter(existingFile -> updateToDoRequest.getFiles().stream()
+                                .anyMatch(requestFile -> requestFile.getHash().equals(existingFile.getHash())))
+                        .collect(Collectors.toList());
+
+                uploadedFiles.addAll(unchangedFiles);
+
+                ToDo toDo = ToDo.create(userId, updateToDoRequest.getTitle(), updateToDoRequest.getDescription(), updateToDoRequest.getTags(), uploadedFiles);
                 toDo.setId(updateToDoRequest.getId());
-                MongoDbToDo updatedToDo = toDosStore.update(toDo);
-                ToDoResponse response = new ToDoResponse(updatedToDo.getId(), updatedToDo.getTitle(), updatedToDo.getDescription(), updatedToDo.getCreatedAt(), updatedToDo.getTags(), null);
+
+                MongoDbToDo upd = toDosStore.update(toDo);
+                MongoDbToDo updatedToDo = toDosStore.getById(updateToDoRequest.getId());
+                ToDoResponse response = new ToDoResponse(updatedToDo.getId(), updatedToDo.getTitle(), updatedToDo.getDescription(), updatedToDo.getCreatedAt(), updatedToDo.getTags(), uploadedFiles);
                 return Results.ok(Json.toJson(response));
             }
             catch (Exception e) {
                 return Results.internalServerError(e.getMessage());
             }
-
-
         });
     }
 
@@ -248,11 +241,51 @@ public class ToDosController {
             }
 
             try {
+                toDo.getFiles().forEach(file -> filesStore.removeByFileMetadata(file));
                 toDosStore.removeById(toDoObjectId);
-                return Results.noContent();
+                return Results.ok("Successfully removed To-Do");
             } catch (Exception e) {
                 return Results.internalServerError("Error removing To-Do");
             }
         });
+    }
+
+    public Result exportToDoById(Http.Request request, String toDoId) {
+        return jwtControllerHelper.withAuthenticatedUser(request, userId -> {
+            var toDoObjectId = new org.bson.types.ObjectId(toDoId);
+            MongoDbToDo toDo = toDosStore.getById(toDoObjectId);
+            if (toDo == null) {
+                return Results.notFound("To-Do not found");
+            }
+
+            if (!toDo.getUserId().equals(userId)) {
+                return Results.forbidden("To-Do does not belong to user");
+            }
+
+            try {
+                File zipFile = filesStore.exportFileWithToDo(toDo);
+
+                return Results.ok(zipFile)
+                        .as("application/zip")
+                        .withHeader("Content-Disposition", "attachment; filename=" + zipFile.getName());
+            } catch (IllegalArgumentException e) {
+                return Results.notFound("ToDo not found: " + e.getMessage());
+            } catch (Exception e) {
+                return Results.internalServerError("Error during export: " + e.getMessage());
+            }
+        });
+    }
+
+    private boolean hasFileHashChanged(List<FileMetadataRequest> filesFromRequest, List<FileMetadata> filesFromDatabase) {
+        return filesFromRequest.stream()
+                .anyMatch(f -> filesFromDatabase.stream()
+                        .noneMatch(tde -> tde.getHash().equals(f.getHash())));
+    }
+
+    private List<FileMetadata> getFilesToDelete(List<FileMetadataRequest> filesFromRequest, List<FileMetadata> filesFromDatabase) {
+        return filesFromDatabase.stream()
+                .filter(fileInDb -> filesFromRequest.stream()
+                        .noneMatch(fileInRequest -> fileInRequest.getHash().equals(fileInDb.getHash())))
+                .collect(Collectors.toList());
     }
 }

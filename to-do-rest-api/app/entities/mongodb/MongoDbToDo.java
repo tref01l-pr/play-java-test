@@ -31,18 +31,13 @@ public class MongoDbToDo {
     @Indexed
     private List<String> tags;
 
+    @Property("files")
     private List<FileMetadata> files;
 
     public MongoDbToDo() {
         // dummy constructor for Morphia
     }
 
-    public MongoDbToDo(ObjectId userId, String title, String description) {
-        this.userId = userId;
-        this.title = title;
-        this.description = description;
-        this.createdAt = new Date();
-    }
 
     public ObjectId getId() {
         return _id;
@@ -85,6 +80,10 @@ public class MongoDbToDo {
     }
 
     public List<String> getTags() {
+        if (tags == null) {
+            return List.of();
+        }
+
         return tags;
     }
 
@@ -93,6 +92,9 @@ public class MongoDbToDo {
     }
 
     public List<FileMetadata> getFiles() {
+        if (files == null) {
+            return List.of();
+        }
         return files;
     }
 
