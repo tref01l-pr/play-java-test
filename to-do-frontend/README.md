@@ -5,3 +5,25 @@ This template should help get you started developing with Vue 3 in Vite. The tem
 ## Recommended IDE Setup
 
 - [VS Code](https://code.visualstudio.com/) + [Vue - Official](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (previously Volar) and disable Vetur
+
+## 🚀 Quick Start
+### 1. Prerequisites
+Ensure you have the following installed:
+- Node.js (v16 or higher recommended)
+- PNPM (v7 or higher)
+- If PNPM is not installed, you can install it using: ```npm install -g pnpm```
+### 2. Clone the Repository
+```
+git clone https://github.com/tref01l-pr/play-java-test.git
+cd to-do-frontend
+```
+### 3. Install Dependencies
+```
+pnpm install
+```
+### 4. Start our frontend
+```
+pnpm run dev
+```
+### 5. Tip
+If you have different uri "http://localhost:5173/", you have to change cors in the backend project))
