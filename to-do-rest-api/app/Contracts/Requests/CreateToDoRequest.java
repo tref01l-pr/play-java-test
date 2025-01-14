@@ -2,12 +2,24 @@ package Contracts.Requests;
 
 import org.bson.types.ObjectId;
 
+import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
+import javax.validation.constraints.Size;
 import java.util.List;
 
 public class CreateToDoRequest {
+    @NotNull(message = "User ID is required")
     private ObjectId userId;
+
+    @NotBlank(message = "Title is required")
+    @Size(max = 100, message = "Title must not exceed 100 characters")
     private String title;
+
+    @Size(max = 500, message = "Description must not exceed 500 characters")
     private String description;
+
+    @NotNull(message = "Tags are required")
+    @Size(max = 10, message = "You can specify up to 10 tags")
     private List<String> tags;
 
     public CreateToDoRequest(ObjectId userId, String title, String description, List<String> tags) {
