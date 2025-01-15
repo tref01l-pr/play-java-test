@@ -28,6 +28,7 @@ import utils.SimpleSHA512;
 import utils.Util;
 
 import javax.inject.Inject;
+import javax.validation.ValidationException;
 import javax.validation.Validator;
 import java.io.UnsupportedEncodingException;
 import java.time.Duration;
@@ -62,7 +63,7 @@ public class AuthorizationController {
         this.validator = validator;
     }
 
-    public CompletionStage<Result> login(Http.Request request) throws UnsupportedEncodingException {
+    public CompletionStage<Result> login(Http.Request request) throws Exception {
         JsonNode json = request.body().asJson();
         return supplyAsync(() -> {
             if (json == null) {
@@ -75,25 +76,20 @@ public class AuthorizationController {
 
                 var violations = validator.validate(loginUserRequest);
                 if (!violations.isEmpty()) {
-                    throw new Exception(
+                    throw new ValidationException(
                             violations.stream()
                                     .map(v -> v.getPropertyPath() + ": " + v.getMessage())
                                     .collect(Collectors.joining(", ")));
                 }
 
-                if (loginUserRequest.getUsername() == null || loginUserRequest.getPassword() == null) {
-                    return Results.forbidden("Missing username or password");
-                }
-
-
                 var user = usersStore.getByUsername(loginUserRequest.getUsername());
                 if (user == null) {
-                    return Results.forbidden("Invalid username or password");
+                    throw new ValidationException("Invalid username or password");
                 }
 
                 if (!user.getPasswordHash().equals(new SimpleSHA512().hash(loginUserRequest.getPassword())))
                 {
-                    return Results.forbidden("Invalid username or password");
+                    throw new ValidationException("Invalid username or password");
                 }
 
                 String secret = config.getString("play.http.secret.key");
@@ -111,7 +107,7 @@ public class AuthorizationController {
                                 .build());
             } catch (Exception e) {
                 Logger.error(e.getMessage());
-                return Results.forbidden(e.getMessage());
+                return Results.internalServerError("Unexpected error: " + e.getMessage());
             }
 
         }, ec.current());
@@ -129,22 +125,14 @@ public class AuthorizationController {
             try {
                 var violations = validator.validate(registerUserRequest);
                 if (!violations.isEmpty()) {
-                    throw new Exception(
+                    throw new ValidationException(
                             violations.stream()
                                     .map(v -> v.getPropertyPath() + ": " + v.getMessage())
                                     .collect(Collectors.joining(", ")));
                 }
 
-                if (registerUserRequest.getUsername() == null) {
-                    return Results.badRequest("Missing username");
-                }
-
-                if (registerUserRequest.getPassword() == null) {
-                    return Results.badRequest("Missing password");
-                }
-
                 if (!registerUserRequest.getPassword().equals(registerUserRequest.getPasswordConfirmation())) {
-                    return Results.badRequest("Passwords do not match" + registerUserRequest.getPassword() + " " + registerUserRequest.getPasswordConfirmation());
+                    throw new ValidationException("Passwords do not match" + registerUserRequest.getPassword() + " " + registerUserRequest.getPasswordConfirmation());
                 }
 
                 User user = new User(registerUserRequest.getUsername(), registerUserRequest.getPassword());
@@ -228,11 +216,11 @@ public class AuthorizationController {
             var session = userSessionsStore.getByRefreshToken(refreshToken);
             var user = usersStore.getById(session.getUserId());
             if (user == null) {
-                throw new Exception("Invalid refresh token");
+                throw new ValidationException("Invalid refresh token");
             }
 
             if (session == null) {
-                throw new Exception("Invalid refresh token");
+                throw new ValidationException("Invalid refresh token");
             }
 
             var updatedSession = userSessionsStore.update(session, config.getString("play.http.secret.key"));
