@@ -6,12 +6,17 @@ import com.mongodb.client.gridfs.GridFSDownloadStream;
 import entities.mongodb.MongoDbToDo;
 import models.FileMetadata;
 import org.apache.pdfbox.Loader;
-import org.apache.pdfbox.io.RandomAccessRead;
-import org.apache.pdfbox.io.RandomAccessReadBuffer;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.common.PDRectangle;
+import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.bson.types.ObjectId;
+
+import java.awt.*;
 import java.nio.file.Files;
+
+import play.Logger;
 import play.mvc.Http;
 import services.MongoDb;
 import store.FilesStore;
@@ -31,41 +36,92 @@ public class MongoDbFilesStore implements FilesStore {
     @Inject
     private MongoDb mongoDb;
 
-    public FileMetadata create(Http.MultipartFormData.FilePart<File> filePart) throws IOException, NoSuchAlgorithmException {
+    public FileMetadata create(Http.MultipartFormData.FilePart filePart) throws IOException, NoSuchAlgorithmException {
         String fileName = filePart.getFilename();
         String contentType = filePart.getContentType();
         FileMetadata metadata = new FileMetadata();
-
         metadata.setFileName(fileName);
         metadata.setFileType(contentType);
 
         play.libs.Files.TemporaryFile tempFile = (play.libs.Files.TemporaryFile) filePart.getRef();
         File file = tempFile.path().toFile();
+
+        String pdfHash;
         try (InputStream fileStream = new BufferedInputStream(new FileInputStream(file))) {
-            fileStream.mark(Integer.MAX_VALUE);
-            String pdfHash = PdfUtils.calculatePdfHash(fileStream);
-            metadata.setPdfHash(pdfHash);
-            fileStream.reset();
+            pdfHash = PdfUtils.calculatePdfHash(fileStream);
+        }
+        metadata.setPdfHash(pdfHash);
 
-            List<ObjectId> imageIds = new ArrayList<>();
-            RandomAccessRead randomAccessRead = new RandomAccessReadBuffer(fileStream);
+        List<ObjectId> imageIds = new ArrayList<>();
 
-            try (PDDocument document = Loader.loadPDF(randomAccessRead)) {
-                PDFRenderer pdfRenderer = new PDFRenderer(document);
+        try (PDDocument document = Loader.loadPDF(file)) {
+            int numberOfPages = document.getNumberOfPages();
+            PDFRenderer pdfRenderer = new PDFRenderer(document);
 
-                for (int page = 0; page < document.getNumberOfPages(); page++) {
-                    BufferedImage bim = pdfRenderer.renderImageWithDPI(page, 300);
-                    ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                    ImageIO.write(bim, "png", baos);
-                    ByteArrayInputStream bais = new ByteArrayInputStream(baos.toByteArray());
+            Logger.info("Number of pages: " + numberOfPages);
 
-                    ObjectId imageId = mongoDb.getGridFSBucket().uploadFromStream("page-" + page + ".png", bais);
-                    imageIds.add(imageId);
+            System.setProperty("org.apache.pdfbox.rendering.UsePureJavaCMYKConversion", "true");
+
+            for (int page = 0; page < numberOfPages; page++) {
+                BufferedImage image = null;
+                try {
+                    RenderingHints hints = new RenderingHints(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
+                    hints.put(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
+
+                    System.setProperty("org.apache.pdfbox.rendering.UsePureJavaCMYKConversion", "true");
+                    System.setProperty("org.apache.pdfbox.rendering.force-transparent-white", "true");
+
+                    image = pdfRenderer.renderImageWithDPI(
+                            page,
+                            calculateOptimalDPI(document.getPage(page)),
+                            ImageType.RGB);
+
+                    File tempImageFile = File.createTempFile("page-" + page, ".png");
+                    try {
+                        ImageIO.write(image, "png", tempImageFile);
+
+                        image.flush();
+                        image = null;
+
+                        try (InputStream imageStream = new BufferedInputStream(new FileInputStream(tempImageFile))) {
+                            ObjectId imageId = mongoDb.getGridFSBucket().uploadFromStream(
+                                    "page-" + page + ".png",
+                                    imageStream
+                            );
+                            imageIds.add(imageId);
+                        }
+                    } finally {
+                        tempImageFile.delete();
+                    }
+
+                } catch (IOException e) {
+                    if (image != null) {
+                        image.flush();
+                    }
+                    throw e;
+                } catch (Exception e) {
+                    Logger.error("Failed to create image from PDF page " + page, e);
+                    throw new Exception("Failed to create images from PDF", e);
                 }
             }
-            metadata.setImageIds(imageIds);
+        } catch (Exception e) {
+            throw new IOException("Failed to create images from PDF", e);
         }
+
+        metadata.setImageIds(imageIds);
         return metadata;
+    }
+
+    private int calculateOptimalDPI(PDPage page) throws IOException {
+        PDRectangle mediaBox = page.getMediaBox();
+        float width = mediaBox.getWidth();
+        float height = mediaBox.getHeight();
+
+        double area = width * height;
+        if (area > 1000000) {
+            return 150;
+        }
+        return 300;
     }
 
     @Override
@@ -95,11 +151,12 @@ public class MongoDbFilesStore implements FilesStore {
 
             if (todo.getFiles() != null) {
                 for (FileMetadata fileMetadata : todo.getFiles()) {
-                    addImagesAsJpgFromGridFS(zos, fileMetadata);
+                    addImagesAsPngFromGridFS(zos, fileMetadata);
                 }
             }
 
         } catch (IOException e) {
+            Logger.error(e.getMessage());
             throw new RuntimeException("Failed to export ToDo to ZIP", e);
         }
 
@@ -116,7 +173,7 @@ public class MongoDbFilesStore implements FilesStore {
         zos.closeEntry();
     }
 
-    private void addImagesAsJpgFromGridFS(ZipOutputStream zos, FileMetadata fileMetadata) throws IOException {
+    private void addImagesAsPngFromGridFS(ZipOutputStream zos, FileMetadata fileMetadata) throws IOException {
         GridFSBucket gridFSBucket = mongoDb.getGridFSBucket();
 
         if (fileMetadata.getImageIds() == null || fileMetadata.getImageIds().isEmpty()) {
@@ -134,12 +191,12 @@ public class MongoDbFilesStore implements FilesStore {
                     throw new IOException("Failed to decode image with ID " + imageId + " as an image.");
                 }
 
-                String fileName = "images/" + imageId.toHexString() + ".jpg";
+                String fileName = "images/" + imageId.toHexString() + ".png";
                 ZipEntry zipEntry = new ZipEntry(fileName);
                 zos.putNextEntry(zipEntry);
 
                 try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
-                    ImageIO.write(image, "jpg", baos);
+                    ImageIO.write(image, "png", baos);
                     zos.write(baos.toByteArray());
                 } finally {
                     zos.closeEntry();

@@ -16,6 +16,9 @@ import play.mvc.Results;
 
 import javax.validation.Validator;
 import java.io.*;
+import java.lang.management.ManagementFactory;
+import java.lang.management.MemoryMXBean;
+import java.lang.management.MemoryUsage;
 import java.util.concurrent.CompletionStage;
 import java.util.stream.Collectors;
 
@@ -72,6 +75,19 @@ public class ToDosController {
             if (jsonPart == null) {
                 return Results.badRequest("Missing JSON part of the request");
             }
+
+            MemoryMXBean memoryMXBean = ManagementFactory.getMemoryMXBean();
+            MemoryUsage heapMemoryUsage = memoryMXBean.getHeapMemoryUsage();
+
+            long usedMemory = heapMemoryUsage.getUsed();
+            long maxMemory = heapMemoryUsage.getMax();
+            long committedMemory = heapMemoryUsage.getCommitted();
+
+            long usedMemoryMB = usedMemory / (1024 * 1024);
+            long maxMemoryMB = maxMemory / (1024 * 1024);
+            long committedMemoryMB = committedMemory / (1024 * 1024);
+
+            Logger.info("Memory usage: " + usedMemoryMB + " MB / " + maxMemoryMB + " MB / " + committedMemoryMB + " MB");
 
             try {
                 var createToDoRequest = Json.fromJson(Json.parse(jsonPart), CreateToDoRequest.class);
