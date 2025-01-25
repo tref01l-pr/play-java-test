@@ -5,15 +5,9 @@ import com.mongodb.client.gridfs.GridFSBucket;
 import com.mongodb.client.gridfs.GridFSDownloadStream;
 import entities.mongodb.MongoDbToDo;
 import models.FileMetadata;
-import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
-import org.apache.pdfbox.pdmodel.PDPage;
-import org.apache.pdfbox.pdmodel.common.PDRectangle;
-import org.apache.pdfbox.rendering.ImageType;
-import org.apache.pdfbox.rendering.PDFRenderer;
 import org.bson.types.ObjectId;
 
-import java.awt.*;
 import java.nio.file.Files;
 
 import play.Logger;
@@ -37,91 +31,65 @@ public class MongoDbFilesStore implements FilesStore {
     private MongoDb mongoDb;
 
     public FileMetadata create(Http.MultipartFormData.FilePart filePart) throws IOException, NoSuchAlgorithmException {
-        String fileName = filePart.getFilename();
-        String contentType = filePart.getContentType();
         FileMetadata metadata = new FileMetadata();
-        metadata.setFileName(fileName);
-        metadata.setFileType(contentType);
+        metadata.setFileName(filePart.getFilename());
+        metadata.setFileType(filePart.getContentType());
 
-        play.libs.Files.TemporaryFile tempFile = (play.libs.Files.TemporaryFile) filePart.getRef();
-        File file = tempFile.path().toFile();
+        File inputFile = ((play.libs.Files.TemporaryFile) filePart.getRef()).path().toFile();
+        PDDocument document = null;
 
-        String pdfHash;
-        try (InputStream fileStream = new BufferedInputStream(new FileInputStream(file))) {
-            pdfHash = PdfUtils.calculatePdfHash(fileStream);
-        }
-        metadata.setPdfHash(pdfHash);
+        try {
+            document = PdfUtils.loadAndRepairPDF(inputFile);
+            metadata.setPdfHash(calculatePdfHash(inputFile));
 
-        List<ObjectId> imageIds = new ArrayList<>();
-
-        try (PDDocument document = Loader.loadPDF(file)) {
-            int numberOfPages = document.getNumberOfPages();
-            PDFRenderer pdfRenderer = new PDFRenderer(document);
-
-            Logger.info("Number of pages: " + numberOfPages);
-
-            System.setProperty("org.apache.pdfbox.rendering.UsePureJavaCMYKConversion", "true");
-
-            for (int page = 0; page < numberOfPages; page++) {
-                BufferedImage image = null;
-                try {
-                    RenderingHints hints = new RenderingHints(RenderingHints.KEY_RENDERING, RenderingHints.VALUE_RENDER_QUALITY);
-                    hints.put(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BICUBIC);
-
-                    System.setProperty("org.apache.pdfbox.rendering.UsePureJavaCMYKConversion", "true");
-                    System.setProperty("org.apache.pdfbox.rendering.force-transparent-white", "true");
-
-                    image = pdfRenderer.renderImageWithDPI(
-                            page,
-                            calculateOptimalDPI(document.getPage(page)),
-                            ImageType.RGB);
-
-                    File tempImageFile = File.createTempFile("page-" + page, ".png");
-                    try {
-                        ImageIO.write(image, "png", tempImageFile);
-
-                        image.flush();
-                        image = null;
-
-                        try (InputStream imageStream = new BufferedInputStream(new FileInputStream(tempImageFile))) {
-                            ObjectId imageId = mongoDb.getGridFSBucket().uploadFromStream(
-                                    "page-" + page + ".png",
-                                    imageStream
-                            );
-                            imageIds.add(imageId);
-                        }
-                    } finally {
-                        tempImageFile.delete();
-                    }
-
-                } catch (IOException e) {
-                    if (image != null) {
-                        image.flush();
-                    }
-                    throw e;
-                } catch (Exception e) {
-                    Logger.error("Failed to create image from PDF page " + page, e);
-                    throw new Exception("Failed to create images from PDF", e);
-                }
+            List<ObjectId> imageIds = processDocument(document);
+            if (imageIds.isEmpty()) {
+                throw new IOException("No images found in PDF");
             }
-        } catch (Exception e) {
-            throw new IOException("Failed to create images from PDF", e);
-        }
 
-        metadata.setImageIds(imageIds);
-        return metadata;
+            metadata.setImageIds(imageIds);
+            return metadata;
+
+        } finally {
+            if (document != null) {
+                document.close();
+            }
+        }
     }
 
-    private int calculateOptimalDPI(PDPage page) throws IOException {
-        PDRectangle mediaBox = page.getMediaBox();
-        float width = mediaBox.getWidth();
-        float height = mediaBox.getHeight();
+    private List<ObjectId> processDocument(PDDocument document) throws IOException {
+        List<ObjectId> imageIds = new ArrayList<>();
 
-        double area = width * height;
-        if (area > 1000000) {
-            return 150;
+        List<BufferedImage> images = PdfUtils.convertPDFToImages(document);
+
+        for (int i = 0; i < images.size(); i++) {
+            imageIds.add(processImage(images.get(i), i));
+            images.get(i).flush();
         }
-        return 300;
+
+        return imageIds;
+    }
+
+    private ObjectId processImage(BufferedImage image, int pageNumber) throws IOException {
+        File tempImageFile = null;
+        try {
+            tempImageFile = File.createTempFile("page-" + pageNumber, ".png");
+            ImageIO.write(image, "png", tempImageFile);
+
+            try (InputStream imageStream = new BufferedInputStream(new FileInputStream(tempImageFile))) {
+                return mongoDb.getGridFSBucket().uploadFromStream("page-" + pageNumber + ".png", imageStream);
+            }
+        } finally {
+            if (tempImageFile != null) {
+                tempImageFile.delete();
+            }
+        }
+    }
+
+    private String calculatePdfHash(File file) throws IOException, NoSuchAlgorithmException {
+        try (InputStream fileStream = new BufferedInputStream(new FileInputStream(file))) {
+            return PdfUtils.calculatePdfHash(fileStream);
+        }
     }
 
     @Override

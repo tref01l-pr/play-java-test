@@ -15,5 +15,17 @@ libraryDependencies += "dev.morphia.morphia" % "morphia-core" % "2.4.14"
 libraryDependencies += "commons-codec" % "commons-codec" % "1.17.1"
 libraryDependencies += "org.bouncycastle" % "bcprov-jdk15on" % "1.70"
 
-libraryDependencies += "org.apache.pdfbox" % "pdfbox" % "3.0.3"
-libraryDependencies += "org.apache.pdfbox" % "pdfbox-tools" % "3.0.3"
+libraryDependencies += "org.apache.pdfbox" % "pdfbox" % "3.0.4"
+libraryDependencies += "org.apache.pdfbox" % "pdfbox-tools" % "3.0.4"
+
+libraryDependencies += "com.github.jai-imageio" % "jai-imageio-core" % "1.4.0"
+libraryDependencies += "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.4.0"
+
+libraryDependencies += "org.ghost4j" % "ghost4j" % "1.0.1"
+
+libraryDependencies ++= Seq(
+  "com.itextpdf" % "itext7-core" % "9.0.0",
+  "com.itextpdf" % "kernel" % "9.0.0",
+  "com.itextpdf" % "io" % "9.0.0",
+  "com.itextpdf" % "layout" % "9.0.0"
+)
