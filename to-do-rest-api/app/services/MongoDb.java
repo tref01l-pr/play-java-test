@@ -32,7 +32,7 @@ public class MongoDb {
         // Don't use TLS by default for local development environments and for MongoDBs in OpenShift containers
         Boolean tls = !(Config.getBoolean(Config.Option.MONGODB_DISABLE_TLS) || "localhost".equals(hostname));
         String mongoUrl;
-        if (username != null && password != null) {
+        if (username != null && password != null && !username.isEmpty() && !password.isEmpty()) {
             mongoUrl = "mongodb://" + username + ":" + password + "@" + hostname + ":27017/" + database + "?tls=" + tls.toString().toLowerCase() + "&connecttimeoutms=" + TIMEOUT_CONNECT;
         } else {
             mongoUrl = "mongodb://" + hostname + ":27017/?tls=" + tls.toString().toLowerCase() + "&connecttimeoutms=" + TIMEOUT_CONNECT;

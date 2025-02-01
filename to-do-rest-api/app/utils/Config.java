@@ -2,8 +2,11 @@ package utils;
 
 import java.util.*;
 import java.util.stream.Collectors;
+import io.github.cdimascio.dotenv.Dotenv;
 
 public class Config {
+    private static final Dotenv dotenv = Dotenv.load();
+
     public enum Option {
         LDAP_BASE_DOMAIN, //
         LDAP_BASE_PARTITION_NAME, //
@@ -60,19 +63,20 @@ public class Config {
         Map<Config.Option, String> cfg = new HashMap<>();
 
         // Set some defaults which mostly help with running tests
-        cfg.put(Option.MONGODB_ENABLE, "false");
-        cfg.put(Option.MONGODB_DATABASE, "ToDoDatabase");
-        cfg.put(Option.MONGODB_HOSTNAME, "localhost");
-        cfg.put(Option.MONGODB_USERNAME, "asd");
-        cfg.put(Option.MONGODB_PASSWORD, null);
-        cfg.put(Option.USER_EXPIRES, "" + 60L * 60L * 24L * 90L); // 90 days by default
-        cfg.put(Option.USER_SESSION_EXPIRES, "" + 60L * 60L * 24L); // 1 day by default
-        cfg.put(Option.USER_ACCESS_TOKEN_EXPIRES, "" + 60L * 60L); // 1 hour by default
+        cfg.put(Option.MONGODB_ENABLE, dotenv.get("MONGODB_ENABLE", "false"));
+        cfg.put(Option.MONGODB_DATABASE, dotenv.get("MONGODB_DATABASE", "ToDoDatabase"));
+        cfg.put(Option.MONGODB_HOSTNAME, dotenv.get("MONGODB_HOSTNAME", "localhost"));
+        cfg.put(Option.MONGODB_USERNAME, dotenv.get("MONGODB_USERNAME", ""));
+        cfg.put(Option.MONGODB_PASSWORD, dotenv.get("MONGODB_PASSWORD", ""));
+        cfg.put(Option.USER_EXPIRES, dotenv.get("USER_EXPIRES", "" + 60L * 60L * 24L * 90L));
+        cfg.put(Option.USER_SESSION_EXPIRES, dotenv.get("USER_SESSION_EXPIRES", "" + 60L * 60L * 24L));
+        cfg.put(Option.USER_ACCESS_TOKEN_EXPIRES, dotenv.get("USER_ACCESS_TOKEN_EXPIRES", "" + 60L * 60L));
 
 
         for (Option o : Option.values()) {
-            if (env.containsKey(o.name())) {
-                cfg.put(o, env.get(o.name()));
+            String envValue = dotenv.get(o.name());
+            if (envValue != null) {
+                cfg.put(o, envValue);
             }
         }
 

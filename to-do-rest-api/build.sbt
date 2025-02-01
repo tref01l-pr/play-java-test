@@ -20,6 +20,7 @@ libraryDependencies += "org.apache.pdfbox" % "pdfbox-tools" % "3.0.4"
 
 libraryDependencies += "com.github.jai-imageio" % "jai-imageio-core" % "1.4.0"
 libraryDependencies += "com.github.jai-imageio" % "jai-imageio-jpeg2000" % "1.4.0"
+libraryDependencies += "io.github.cdimascio" % "dotenv-java" % "3.1.0"
 
 libraryDependencies += "org.ghost4j" % "ghost4j" % "1.0.1"
 
