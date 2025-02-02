@@ -45,32 +45,32 @@ public class CustomHttpErrorHandler implements HttpErrorHandler {
         String message;
 
         if (actualException instanceof ResourceNotFoundException) {
-            var e = (ResourceNotFoundException) exception;
+            var e = (ResourceNotFoundException) actualException;
             statusCode = e.getStatusCode();
             title = "Resource Not Found";
             message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
         } else if (actualException instanceof InvalidRequestException) {
-            var e = (InvalidRequestException) exception;
+            var e = (InvalidRequestException) actualException;
             statusCode = e.getStatusCode();
             title = "Invalid Request";
             message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
         } else if (actualException instanceof FileProcessingException) {
-            var e = (FileProcessingException) exception;
+            var e = (FileProcessingException) actualException;
             statusCode = e.getStatusCode();
             title = "File Processing Error";
             message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
         } else if (actualException instanceof DatabaseException) {
-            var e = (DatabaseException) exception;
+            var e = (DatabaseException) actualException;
             statusCode = e.getStatusCode();
             title = "Database Error";
             message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
         } else if (actualException instanceof ServiceUnavailableException) {
-            var e = (ServiceUnavailableException) exception;
+            var e = (ServiceUnavailableException) actualException;
             statusCode = e.getStatusCode();
             title = "Service Unavailable";
             message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
         }  else if (actualException instanceof ValidationException) {
-            var e = (ValidationException) exception;
+            var e = (ValidationException) actualException;
             statusCode = e.getStatusCode();
             title = "File Validation Error";
             message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
