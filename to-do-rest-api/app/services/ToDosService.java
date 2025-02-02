@@ -3,19 +3,25 @@ package services;
 import Contracts.Requests.CreateToDoRequest;
 import Contracts.Requests.UpdateToDoRequest;
 import Contracts.Responses.ToDoResponse;
+import CustomExceptions.*;
 import com.google.inject.Inject;
+import com.mongodb.MongoException;
+import com.mongodb.MongoTimeoutException;
 import entities.mongodb.MongoDbToDo;
 import models.FileMetadata;
 import models.ToDo;
 import org.bson.types.ObjectId;
+import play.Logger;
+import play.libs.Json;
 import play.mvc.Http;
 import store.ToDosStore;
 import store.UsersStore;
 
+import javax.validation.Validator;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
-import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -24,104 +30,177 @@ public class ToDosService {
     private final ToDosStore toDosStore;
     private final UsersStore usersStore;
     private final FilesService filesService;
+    private final Validator validator;
 
     @Inject
-    public ToDosService(ToDosStore toDosStore, UsersStore usersStore, FilesService filesService) {
+    public ToDosService(ToDosStore toDosStore, UsersStore usersStore, FilesService filesService,
+                        Validator validator) {
         this.toDosStore = toDosStore;
         this.usersStore = usersStore;
         this.filesService = filesService;
+        this.validator = validator;
     }
 
-    public List<ToDoResponse> getAll() {
+    public List<ToDoResponse> getAllToDos() {
         List<? extends MongoDbToDo> toDos = toDosStore.getAll();
         return toDos.stream()
                 .map(this::mapToResponse)
                 .collect(Collectors.toList());
+
     }
 
-    public Optional<List<ToDoResponse>> getToDosByUser(String username, ObjectId userId) {
-        var user = usersStore.getByUsername(username);
-        if (user == null || !user.getId().equals(userId)) {
-            return Optional.empty();
-        }
+    public List<ToDoResponse> getToDosByUser(String username, ObjectId userId) {
+        try {
+            var user = usersStore.getByUsername(username);
+            if (user == null || !user.getId().equals(userId)) {
+                throw new ResourceNotFoundException("User not found");
+            }
 
-        List<MongoDbToDo> toDos = toDosStore.getByUserId(userId);
-        return Optional.of(toDos.stream()
-                .map(this::mapToResponse)
-                .collect(Collectors.toList()));
+            List<MongoDbToDo> toDos = toDosStore.getByUserId(userId);
+            return toDos.stream()
+                    .map(this::mapToResponse)
+                    .collect(Collectors.toList());
+        } catch (IllegalArgumentException e) {
+            Logger.error("Invalid user ID format: " + userId, e);
+            throw new InvalidRequestException("Invalid user ID format");
+        }
     }
 
-    public Optional<ToDoResponse> getToDoById(String toDoId, ObjectId userId) {
-        MongoDbToDo toDo = toDosStore.getById(new org.bson.types.ObjectId(toDoId));
-        if (toDo == null || !toDo.getUserId().equals(userId)) {
-            return Optional.empty();
+    public ToDoResponse getToDoById(String toDoId, ObjectId userId) {
+        try {
+            MongoDbToDo toDo = toDosStore.getById(new ObjectId(toDoId));
+            if (toDo == null || !toDo.getUserId().equals(userId)) {
+                throw new ResourceNotFoundException("To-Do not found");
+            }
+            return mapToResponse(toDo);
+        } catch (IllegalArgumentException e) {
+            Logger.error("Invalid todo ID format: " + toDoId, e);
+            throw new InvalidRequestException("Invalid todo ID format");
         }
-        return Optional.of(mapToResponse(toDo));
     }
 
-    public ToDoResponse createToDo(CreateToDoRequest request, ObjectId userId, List<Http.MultipartFormData.FilePart<File>> files) throws IOException, NoSuchAlgorithmException {
-        if (!request.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("User ID in token does not match user ID in request");
+    public ToDoResponse createToDo(Http.Request request, ObjectId userId) {
+        Http.MultipartFormData<File> body = request.body().asMultipartFormData();
+        List<FileMetadata> uploadedFiles = Collections.emptyList();
+
+        if (body == null) {
+            throw new InvalidRequestException("Request must be multipart/form-data");
         }
 
-        List<FileMetadata> uploadedFiles = filesService.create(files);
+        String jsonPart = getJsonPart(body);
+        if (jsonPart == null) {
+            throw new InvalidRequestException("Missing JSON part of the request");
+        }
 
-        ToDo toDo = ToDo.create(request.getUserId(), request.getTitle(), request.getDescription(), request.getTags(), uploadedFiles);
+        var createToDoRequest = Json.fromJson(Json.parse(jsonPart), CreateToDoRequest.class);
+        validateRequest(createToDoRequest);
+
+        if (!createToDoRequest.getUserId().equals(userId)) {
+            throw new InvalidRequestException("User ID in token does not match user ID in request");
+        }
+
+        uploadedFiles = filesService.create(body.getFiles());
+
+        ToDo toDo = ToDo.create(userId, createToDoRequest.getTitle(),
+                createToDoRequest.getDescription(), createToDoRequest.getTags(), uploadedFiles);
+
         MongoDbToDo createdToDo = toDosStore.create(toDo);
+        Logger.info("To-Do created: " + createdToDo.getId());
+
         return mapToResponse(createdToDo);
     }
 
-    public ToDoResponse updateToDo(ObjectId userId, UpdateToDoRequest updateToDoRequest, List<Http.MultipartFormData.FilePart<File>> fileParts) throws IOException, NoSuchAlgorithmException {
-        MongoDbToDo toDoExist = toDosStore.getById(updateToDoRequest.getId());
+    public ToDoResponse updateToDo(Http.Request request, ObjectId userId) {
+        Http.MultipartFormData<File> body = request.body().asMultipartFormData();
+        List<FileMetadata> uploadedFiles = Collections.emptyList();
 
-        if (toDoExist == null) {
-            throw new IllegalArgumentException("To-Do not found");
+        if (body == null) {
+            throw new InvalidRequestException("Request must be multipart/form-data");
         }
 
-        if (!toDoExist.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("To-Do does not belong to user");
+        String jsonPart = getJsonPart(body);
+        if (jsonPart == null) {
+            throw new InvalidRequestException("Missing JSON part of the request");
         }
 
-        if (filesService.hasFileHashChanged(updateToDoRequest.getFilesMetadata(), toDoExist.getFiles())) {
-            throw new IllegalArgumentException("Files can't be added with request");
+        var updateToDoRequest = Json.fromJson(Json.parse(jsonPart), UpdateToDoRequest.class);
+        validateRequest(updateToDoRequest);
+
+        MongoDbToDo existingToDo = toDosStore.getById(updateToDoRequest.getId());
+        if (existingToDo == null || !existingToDo.getUserId().equals(userId)) {
+            throw new ResourceNotFoundException("To-Do not found or does not belong to user");
         }
 
-        List<FileMetadata> filesToDelete = filesService.getFilesToDelete(updateToDoRequest.getFilesMetadata(), toDoExist.getFiles());
+        if (filesService.hasFileHashChanged(updateToDoRequest.getFilesMetadata(), existingToDo.getFiles())) {
+            throw new InvalidRequestException("Files can't be added with request");
+        }
+
+        List<FileMetadata> filesToDelete = filesService.getFilesToDelete(
+                updateToDoRequest.getFilesMetadata(), existingToDo.getFiles());
         filesService.deleteFiles(filesToDelete);
 
-        List<FileMetadata> uploadedFiles = filesService.uploadFiles(fileParts);
-        List<FileMetadata> unchangedFiles = filesService.mergeFiles(updateToDoRequest.getFilesMetadata(), toDoExist.getFiles());
+        uploadedFiles = filesService.uploadFiles(body.getFiles());
+        List<FileMetadata> unchangedFiles = filesService.mergeFiles(
+                updateToDoRequest.getFilesMetadata(), existingToDo.getFiles());
         uploadedFiles.addAll(unchangedFiles);
 
-        ToDo updatedToDo = ToDo.create(
-                userId,
-                updateToDoRequest.getTitle(),
-                updateToDoRequest.getDescription(),
-                updateToDoRequest.getTags(),
-                uploadedFiles
-        );
+        ToDo updatedToDo = ToDo.create(userId, updateToDoRequest.getTitle(),
+                updateToDoRequest.getDescription(), updateToDoRequest.getTags(), uploadedFiles);
         updatedToDo.setId(updateToDoRequest.getId());
-        toDosStore.update(updatedToDo);
 
-        MongoDbToDo refreshedToDo = toDosStore.getById(updateToDoRequest.getId());
-        return mapToResponse(refreshedToDo);
+        MongoDbToDo result = toDosStore.update(updatedToDo);
+        Logger.info("To-Do updated: " + result.getId());
+
+        return mapToResponse(result);
     }
 
-    public void deleteToDoById(String toDoId, ObjectId userId) throws Exception {
-        MongoDbToDo toDo = toDosStore.getById(new org.bson.types.ObjectId(toDoId));
-        if (toDo == null || !toDo.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("To-Do not found or does not belong to user");
+    public void deleteToDoById(String toDoId, ObjectId userId) {
+        try {
+            MongoDbToDo toDo = toDosStore.getById(new ObjectId(toDoId));
+            if (toDo == null || !toDo.getUserId().equals(userId)) {
+                throw new ResourceNotFoundException("To-Do not found or does not belong to user");
+            }
+
+            filesService.deleteFiles(toDo.getFiles());
+
+            toDosStore.removeById(new ObjectId(toDoId));
+            Logger.info("To-Do was deleted: " + toDoId);
+        } catch (IllegalArgumentException e) {
+            Logger.error("Invalid todo ID format: " + toDoId, e);
+            throw new InvalidRequestException("Invalid todo ID format");
         }
-        filesService.deleteFiles(toDo.getFiles());
-        toDosStore.removeById(new org.bson.types.ObjectId(toDoId));
     }
 
-    public File exportToDoById(String toDoId, ObjectId userId) throws Exception {
-        MongoDbToDo toDo = toDosStore.getById(new org.bson.types.ObjectId(toDoId));
-        if (toDo == null || !toDo.getUserId().equals(userId)) {
-            throw new IllegalArgumentException("To-Do not found or does not belong to user");
+    public File exportToDoById(String toDoId, ObjectId userId) {
+        try {
+            MongoDbToDo toDo = toDosStore.getById(new ObjectId(toDoId));
+            if (toDo == null || !toDo.getUserId().equals(userId)) {
+                throw new ResourceNotFoundException("To-Do not found or does not belong to user");
+            }
+
+            File zipFile = filesService.exportToDoFiles(toDo);
+            Logger.info("To-Do was exported: " + toDoId);
+            return zipFile;
+        } catch (IllegalArgumentException e) {
+            Logger.error("Invalid todo ID format: " + toDoId, e);
+            throw new InvalidRequestException("Invalid todo ID format");
         }
-        return filesService.exportToDoFiles(toDo);
+    }
+
+    private void validateRequest(Object request) {
+        var violations = validator.validate(request);
+        if (!violations.isEmpty()) {
+            throw new InvalidRequestException(
+                    violations.stream()
+                            .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                            .collect(Collectors.joining(", "))
+            );
+        }
+    }
+
+    private String getJsonPart(Http.MultipartFormData<File> body) {
+        String[] jsonParts = body.asFormUrlEncoded().get("data");
+        return (jsonParts != null && jsonParts.length > 0) ? jsonParts[0] : null;
     }
 
     private ToDoResponse mapToResponse(MongoDbToDo toDo) {

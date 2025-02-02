@@ -1,15 +1,18 @@
 package services;
 
 import Contracts.Requests.FileMetadataRequest;
+import CustomExceptions.DatabaseException;
+import CustomExceptions.ServiceUnavailableException;
 import com.google.inject.Inject;
+import com.mongodb.MongoException;
+import com.mongodb.MongoTimeoutException;
 import entities.mongodb.MongoDbToDo;
 import models.FileMetadata;
+import play.Logger;
 import play.mvc.Http;
 import store.FilesStore;
 
 import java.io.File;
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -22,28 +25,44 @@ public class FilesService {
         this.filesStore = filesStore;
     }
 
-    public List<FileMetadata> create(List<Http.MultipartFormData.FilePart<File>> fileParts) throws IOException, NoSuchAlgorithmException {
-        List<FileMetadata> uploadedFiles = new ArrayList<>();
+    public List<FileMetadata> create(List<Http.MultipartFormData.FilePart<File>> fileParts) {
+        try {
+            List<FileMetadata> uploadedFiles = new ArrayList<>();
 
-        for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
-            FileMetadata metadata = create(filePart);
-            uploadedFiles.add(metadata);
+            for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
+                FileMetadata metadata = create(filePart);
+                uploadedFiles.add(metadata);
+            }
+
+            return uploadedFiles;
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while creating files", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while creating files", e);
+            throw new DatabaseException("Error accessing database", e);
         }
-
-        return uploadedFiles;
     }
 
-    public FileMetadata create(Http.MultipartFormData.FilePart<File> filePart) throws IOException, NoSuchAlgorithmException {
+    private FileMetadata create(Http.MultipartFormData.FilePart<File> filePart) {
         return filesStore.create(filePart);
     }
 
-    public List<FileMetadata> uploadFiles(List<Http.MultipartFormData.FilePart<File>> fileParts) throws IOException, NoSuchAlgorithmException {
-        List<FileMetadata> uploadedFiles = new ArrayList<>();
-        for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
-            FileMetadata metadata = filesStore.create(filePart);
-            uploadedFiles.add(metadata);
+    public List<FileMetadata> uploadFiles(List<Http.MultipartFormData.FilePart<File>> fileParts) {
+        try {
+            List<FileMetadata> uploadedFiles = new ArrayList<>();
+            for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
+                FileMetadata metadata = filesStore.create(filePart);
+                uploadedFiles.add(metadata);
+            }
+            return uploadedFiles;
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while uploading files", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while uploading files", e);
+            throw new DatabaseException("Error accessing database", e);
         }
-        return uploadedFiles;
     }
 
     public List<FileMetadata> mergeFiles(List<FileMetadataRequest> filesFromRequest, List<FileMetadata> existingFiles) {
@@ -54,13 +73,29 @@ public class FilesService {
     }
 
     public void deleteFiles(List<FileMetadata> files) {
-        for (FileMetadata file : files) {
-            filesStore.removeByFileMetadata(file);
+        try {
+            for (FileMetadata file : files) {
+                filesStore.removeByFileMetadata(file);
+            }
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while deleting files", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while deleting files", e);
+            throw new DatabaseException("Error accessing database", e);
         }
     }
 
-    public File exportToDoFiles(MongoDbToDo toDo) throws Exception {
-        return filesStore.exportFileWithToDo(toDo);
+    public File exportToDoFiles(MongoDbToDo toDo) {
+        try {
+            return filesStore.exportFileWithToDo(toDo);
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while exporting files", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while exporting files", e);
+            throw new DatabaseException("Error accessing database", e);
+        }
     }
 
     public boolean hasFileHashChanged(List<FileMetadataRequest> filesFromRequest, List<FileMetadata> filesFromDatabase) {

@@ -9,7 +9,7 @@ import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
 
 public interface FilesStore {
-    FileMetadata create(Http.MultipartFormData.FilePart<File> filePart) throws IOException, NoSuchAlgorithmException;
+    FileMetadata create(Http.MultipartFormData.FilePart<File> filePart);
     void removeByFileMetadata(FileMetadata metadata);
     File exportFileWithToDo(MongoDbToDo todo);
 }

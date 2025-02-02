@@ -1,5 +1,6 @@
 package models;
 
+import CustomExceptions.ValidationException;
 import org.bson.types.ObjectId;
 
 import java.util.*;
@@ -113,7 +114,7 @@ public class ToDo {
         String validationError = validateCreate(userId, title, description, tags);
 
         if (validationError != null) {
-            throw new IllegalArgumentException(validationError);
+            throw new ValidationException(validationError);
         }
 
         return new ToDo(null, userId, title, description, tags, files);

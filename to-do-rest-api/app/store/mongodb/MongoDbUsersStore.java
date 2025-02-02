@@ -1,10 +1,15 @@
 package store.mongodb;
 
+import CustomExceptions.DatabaseException;
+import CustomExceptions.ServiceUnavailableException;
+import com.mongodb.MongoException;
+import com.mongodb.MongoTimeoutException;
 import dev.morphia.query.Query;
 import dev.morphia.query.filters.Filters;
 import entities.mongodb.MongoDbUser;
 import models.User;
 import org.bson.types.ObjectId;
+import play.Logger;
 import services.MongoDb;
 import store.UsersStore;
 
@@ -26,9 +31,17 @@ public class MongoDbUsersStore implements UsersStore {
 
     @Override
     public MongoDbUser getByUsername(String username) {
-        return query()
-                .filter(Filters.eq("username", username))
-                .first();
+        try {
+            return query()
+                    .filter(Filters.eq("username", username))
+                    .first();
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while getting all todos", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while getting all todos", e);
+            throw new DatabaseException("Error accessing database", e);
+        }
     }
 
     @Override

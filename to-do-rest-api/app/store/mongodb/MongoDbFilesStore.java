@@ -1,6 +1,12 @@
 package store.mongodb;
 
+import CustomExceptions.DatabaseException;
+import CustomExceptions.FileProcessingException;
+import CustomExceptions.ResourceNotFoundException;
+import CustomExceptions.ServiceUnavailableException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.mongodb.MongoException;
+import com.mongodb.MongoTimeoutException;
 import com.mongodb.client.gridfs.GridFSBucket;
 import com.mongodb.client.gridfs.GridFSDownloadStream;
 import entities.mongodb.MongoDbToDo;
@@ -30,36 +36,95 @@ public class MongoDbFilesStore implements FilesStore {
     @Inject
     private MongoDb mongoDb;
 
-    public FileMetadata create(Http.MultipartFormData.FilePart filePart) throws IOException, NoSuchAlgorithmException {
-        FileMetadata metadata = new FileMetadata();
-        metadata.setFileName(filePart.getFilename());
-        metadata.setFileType(filePart.getContentType());
+    @Override
+    public FileMetadata create(Http.MultipartFormData.FilePart filePart) {
+        try {
+            FileMetadata metadata = new FileMetadata();
+            metadata.setFileName(filePart.getFilename());
+            metadata.setFileType(filePart.getContentType());
 
-        File inputFile = ((play.libs.Files.TemporaryFile) filePart.getRef()).path().toFile();
-        PDDocument document = null;
+            File inputFile = ((play.libs.Files.TemporaryFile) filePart.getRef()).path().toFile();
+            PDDocument document = null;
+
+            try {
+                document = PdfUtils.loadAndRepairPDF(inputFile);
+                metadata.setPdfHash(calculatePdfHash(inputFile));
+
+                List<ObjectId> imageIds = processDocument(document);
+                if (imageIds.isEmpty()) {
+                    throw new FileProcessingException("No images found in PDF");
+                }
+
+                metadata.setImageIds(imageIds);
+                return metadata;
+            } finally {
+                if (document != null) {
+                    document.close();
+                }
+            }
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while creating file metadata", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while creating file metadata", e);
+            throw new DatabaseException("Error accessing database", e);
+        } catch (IOException | NoSuchAlgorithmException e) {
+            Logger.error("Error processing PDF file", e);
+            throw new FileProcessingException("Error processing PDF file: " + e.getMessage());
+        }
+    }
+
+    @Override
+    public void removeByFileMetadata(FileMetadata metadata) {
+        try {
+            for (ObjectId imageId : metadata.getImageIds()) {
+                mongoDb.getGridFSBucket().delete(imageId);
+            }
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while removing file metadata", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while removing file metadata", e);
+            throw new DatabaseException("Error accessing database", e);
+        }
+    }
+
+    @Override
+    public File exportFileWithToDo(MongoDbToDo todo) {
+        if (todo == null) {
+            throw new ResourceNotFoundException("ToDo cannot be null");
+        }
 
         try {
-            document = PdfUtils.loadAndRepairPDF(inputFile);
-            metadata.setPdfHash(calculatePdfHash(inputFile));
+            File zipFile = Files.createTempFile("todo-export-", ".zip").toFile();
 
-            List<ObjectId> imageIds = processDocument(document);
-            if (imageIds.isEmpty()) {
-                throw new IOException("No images found in PDF");
+            try (FileOutputStream fos = new FileOutputStream(zipFile);
+                 ZipOutputStream zos = new ZipOutputStream(fos)) {
+
+                addToDoDataToZip(zos, todo);
+
+                if (todo.getFiles() != null) {
+                    for (FileMetadata fileMetadata : todo.getFiles()) {
+                        addImagesAsPngFromGridFS(zos, fileMetadata);
+                    }
+                }
+
+                return zipFile;
             }
-
-            metadata.setImageIds(imageIds);
-            return metadata;
-
-        } finally {
-            if (document != null) {
-                document.close();
-            }
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while exporting todo", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while exporting todo", e);
+            throw new DatabaseException("Error accessing database", e);
+        } catch (IOException e) {
+            Logger.error("Error creating export file", e);
+            throw new FileProcessingException("Error creating export file: " + e.getMessage(), e);
         }
     }
 
     private List<ObjectId> processDocument(PDDocument document) throws IOException {
         List<ObjectId> imageIds = new ArrayList<>();
-
         List<BufferedImage> images = PdfUtils.convertPDFToImages(document);
 
         for (int i = 0; i < images.size(); i++) {
@@ -90,45 +155,6 @@ public class MongoDbFilesStore implements FilesStore {
         try (InputStream fileStream = new BufferedInputStream(new FileInputStream(file))) {
             return PdfUtils.calculatePdfHash(fileStream);
         }
-    }
-
-    @Override
-    public void removeByFileMetadata(FileMetadata metadata) {
-        for (ObjectId imageId : metadata.getImageIds()) {
-            mongoDb.getGridFSBucket().delete(imageId);
-        }
-    }
-
-    @Override
-    public File exportFileWithToDo(MongoDbToDo todo) {
-        if (todo == null) {
-            throw new IllegalArgumentException("ToDo cannot be null");
-        }
-
-        File zipFile;
-        try {
-            zipFile = Files.createTempFile("todo-export-", ".zip").toFile();
-        } catch (IOException e) {
-            throw new RuntimeException("Failed to create temporary file", e);
-        }
-
-        try (FileOutputStream fos = new FileOutputStream(zipFile);
-             ZipOutputStream zos = new ZipOutputStream(fos)) {
-
-            addToDoDataToZip(zos, todo);
-
-            if (todo.getFiles() != null) {
-                for (FileMetadata fileMetadata : todo.getFiles()) {
-                    addImagesAsPngFromGridFS(zos, fileMetadata);
-                }
-            }
-
-        } catch (IOException e) {
-            Logger.error(e.getMessage());
-            throw new RuntimeException("Failed to export ToDo to ZIP", e);
-        }
-
-        return zipFile;
     }
 
     private void addToDoDataToZip(ZipOutputStream zos, MongoDbToDo todo) throws IOException {

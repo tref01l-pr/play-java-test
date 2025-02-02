@@ -13,5 +13,5 @@ public interface ToDosStore {
     MongoDbToDo getById(ObjectId id);
     MongoDbToDo create(ToDo model);
     MongoDbToDo update(ToDo model);
-    void removeById(ObjectId id) throws Exception;
+    void removeById(ObjectId id);
 }

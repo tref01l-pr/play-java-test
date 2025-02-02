@@ -92,7 +92,6 @@ public class AuthorizationController {
                     throw new ValidationException("Invalid username or password");
                 }
 
-                Logger.info("config.getString: " + config.getString("play.http.secret.key"));
                 String secret = config.getString("play.http.secret.key");
                 var sessionResult = userSessionsStore.create(user.getId(), secret);
 
