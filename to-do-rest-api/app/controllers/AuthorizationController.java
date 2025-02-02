@@ -71,44 +71,39 @@ public class AuthorizationController {
                 return Results.forbidden();
             }
 
-            try {
-                LoginUserRequest loginUserRequest = Json.fromJson(json, LoginUserRequest.class);
+            LoginUserRequest loginUserRequest = Json.fromJson(json, LoginUserRequest.class);
 
-                var violations = validator.validate(loginUserRequest);
-                if (!violations.isEmpty()) {
-                    throw new ValidationException(
-                            violations.stream()
-                                    .map(v -> v.getPropertyPath() + ": " + v.getMessage())
-                                    .collect(Collectors.joining(", ")));
-                }
-
-                var user = usersStore.getByUsername(loginUserRequest.getUsername());
-                if (user == null) {
-                    throw new ValidationException("Invalid username or password");
-                }
-
-                if (!user.getPasswordHash().equals(new SimpleSHA512().hash(loginUserRequest.getPassword())))
-                {
-                    throw new ValidationException("Invalid username or password");
-                }
-
-                String secret = config.getString("play.http.secret.key");
-                var sessionResult = userSessionsStore.create(user.getId(), secret);
-
-                AuthorizationResponse authorizationResponse = new AuthorizationResponse(user.getId(), user.getUsername(), user.getCreatedDate(),
-                        sessionResult.getAccessToken());
-
-                String refreshToken = sessionResult.getRefreshToken();
-                Logger.info("User logged in: " + user.getId());
-                return Results.ok(Json.toJson(authorizationResponse))
-                        .withCookies(Http.Cookie.builder("refreshToken", refreshToken)
-                                .withMaxAge(Duration.between(Instant.now(), sessionResult.getTokenExpiry().toInstant()))
-                                .withHttpOnly(true)
-                                .build());
-            } catch (Exception e) {
-                Logger.error(e.getMessage());
-                return Results.internalServerError("Unexpected error: " + e.getMessage());
+            var violations = validator.validate(loginUserRequest);
+            if (!violations.isEmpty()) {
+                throw new ValidationException(
+                        violations.stream()
+                                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                                .collect(Collectors.joining(", ")));
             }
+
+            var user = usersStore.getByUsername(loginUserRequest.getUsername());
+            if (user == null) {
+                throw new ValidationException("Invalid username or password");
+            }
+
+            if (!user.getPasswordHash().equals(new SimpleSHA512().hash(loginUserRequest.getPassword()))) {
+                throw new ValidationException("Invalid username or password");
+            }
+
+            String secret = config.getString("play.http.secret.key");
+            var sessionResult = userSessionsStore.create(user.getId(), secret);
+
+            AuthorizationResponse authorizationResponse = new AuthorizationResponse(user.getId(), user.getUsername(), user.getCreatedDate(),
+                    sessionResult.getAccessToken());
+
+            String refreshToken = sessionResult.getRefreshToken();
+            Logger.info("User logged in: " + user.getId());
+            return Results.ok(Json.toJson(authorizationResponse))
+                    .withCookies(Http.Cookie.builder("refreshToken", refreshToken)
+                            .withMaxAge(Duration.between(Instant.now(), sessionResult.getTokenExpiry().toInstant()))
+                            .withHttpOnly(true)
+                            .build());
+
 
         }, ec.current());
     }
@@ -122,29 +117,25 @@ public class AuthorizationController {
 
             RegisterUserRequest registerUserRequest = Json.fromJson(json, RegisterUserRequest.class);
 
-            try {
-                var violations = validator.validate(registerUserRequest);
-                if (!violations.isEmpty()) {
-                    throw new ValidationException(
-                            violations.stream()
-                                    .map(v -> v.getPropertyPath() + ": " + v.getMessage())
-                                    .collect(Collectors.joining(", ")));
-                }
 
-                if (!registerUserRequest.getPassword().equals(registerUserRequest.getPasswordConfirmation())) {
-                    throw new ValidationException("Passwords do not match" + registerUserRequest.getPassword() + " " + registerUserRequest.getPasswordConfirmation());
-                }
-
-                User user = new User(registerUserRequest.getUsername(), registerUserRequest.getPassword());
-
-                usersStore.create(user);
-                Logger.info("User created: " + user.getId());
-                return Results.created("User created");
+            var violations = validator.validate(registerUserRequest);
+            if (!violations.isEmpty()) {
+                throw new ValidationException(
+                        violations.stream()
+                                .map(v -> v.getPropertyPath() + ": " + v.getMessage())
+                                .collect(Collectors.joining(", ")));
             }
-            catch (Exception e) {
-                Logger.error(e.getMessage());
-                return Results.forbidden(e.getMessage());
+
+            if (!registerUserRequest.getPassword().equals(registerUserRequest.getPasswordConfirmation())) {
+                throw new ValidationException("Passwords do not match" + registerUserRequest.getPassword() + " " + registerUserRequest.getPasswordConfirmation());
             }
+
+            User user = new User(registerUserRequest.getUsername(), registerUserRequest.getPassword());
+
+            usersStore.create(user);
+            Logger.info("User created: " + user.getId());
+            return Results.created("User created");
+
         }, ec.current());
     }
 
@@ -187,7 +178,7 @@ public class AuthorizationController {
         } else {
             try {
                 objectId = new ObjectId(userId);
-            } catch (IllegalArgumentException e) {
+            } catch (Exception e) {
                 objectId = new ObjectId();
             }
         }
@@ -236,30 +227,30 @@ public class AuthorizationController {
     }
 
     public Result logout(Http.Request request) {
-            return jwtControllerHelper.verify(request, res -> {
-                if (res.left.isPresent()) {
-                    return Results.forbidden(res.left.get().toString());
-                }
+        return jwtControllerHelper.verify(request, res -> {
+            if (res.left.isPresent()) {
+                return Results.forbidden(res.left.get().toString());
+            }
 
-                VerifiedJwt verifiedJwt = res.right.get();
-                var userId = verifiedJwt.getUserId();
-                if (userId == null) {
-                    return Results.forbidden("No user found");
-                }
+            VerifiedJwt verifiedJwt = res.right.get();
+            var userId = verifiedJwt.getUserId();
+            if (userId == null) {
+                return Results.forbidden("No user found");
+            }
 
-                String refreshToken = InputUtils.getRefreshTokenFromCookies(request);
-                if (refreshToken == null || refreshToken.isEmpty()) {
-                    return Results.forbidden("No refresh token found");
-                }
+            String refreshToken = InputUtils.getRefreshTokenFromCookies(request);
+            if (refreshToken == null || refreshToken.isEmpty()) {
+                return Results.forbidden("No refresh token found");
+            }
 
-                try {
-                    userSessionsStore.logout(userId, refreshToken);
+            try {
+                userSessionsStore.logout(userId, refreshToken);
 
-                    return Results.ok("Logged out")
-                            .discardingCookie("refreshToken");
-                } catch (Exception e) {
-                    return Results.forbidden(e.getMessage());
-                }
-            });
+                return Results.ok("Logged out")
+                        .discardingCookie("refreshToken");
+            } catch (Exception e) {
+                return Results.forbidden(e.getMessage());
+            }
+        });
     }
 }

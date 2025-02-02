@@ -78,6 +78,9 @@ public class CustomHttpErrorHandler implements HttpErrorHandler {
         handlers.put(ValidationException.class,
                 ex -> new ErrorDetails("File Validation Error", ex.getMessage(), ((ValidationException) ex).getStatusCode()));
 
+        handlers.put(TokenGenerationException.class,
+                ex -> new ErrorDetails("Authentication Error", ex.getMessage(), ((TokenGenerationException) ex).getStatusCode()));
+
         handlers.put(MongoTimeoutException.class,
                 ex -> new ErrorDetails("Database Timeout", "Database is temporarily unavailable", Http.Status.SERVICE_UNAVAILABLE));
 
