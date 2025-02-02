@@ -13,84 +13,99 @@ import play.mvc.Result;
 import play.mvc.Results;
 
 import javax.inject.Inject;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 
 public class CustomHttpErrorHandler implements HttpErrorHandler {
+    private static final Logger.ALogger logger = Logger.of(CustomHttpErrorHandler.class);
     private final Environment environment;
+    private final Map<Class<? extends Throwable>, ErrorHandler> errorHandlers;
 
     @Inject
     public CustomHttpErrorHandler(Environment environment) {
         this.environment = environment;
+        this.errorHandlers = initializeErrorHandlers();
     }
 
     @Override
     public CompletionStage<Result> onClientError(Http.RequestHeader request, int statusCode, String message) {
-        Logger.error("Client Error: " + message);
-        var errorResponse = Json.toJson(new ErrorResponse("Client Error", message, statusCode));
-        return CompletableFuture.completedFuture(
-                Results.status(statusCode, errorResponse)
-                        .as(Http.MimeTypes.JSON)
-        );
+        logger.error("Client Error: {} - {}", statusCode, message);
+        return createErrorResponse("Client Error", message, statusCode);
     }
 
     @Override
     public CompletionStage<Result> onServerError(Http.RequestHeader request, Throwable exception) {
         Throwable actualException = unwrapException(exception);
-        Logger.error("Server Error: ", actualException);
-        int statusCode;
-        String title;
-        String message;
+        logger.error("Server Error: ", actualException);
 
-        if (actualException instanceof ResourceNotFoundException) {
-            var e = (ResourceNotFoundException) actualException;
-            statusCode = e.getStatusCode();
-            title = "Resource Not Found";
-            message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
-        } else if (actualException instanceof InvalidRequestException) {
-            var e = (InvalidRequestException) actualException;
-            statusCode = e.getStatusCode();
-            title = "Invalid Request";
-            message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
-        } else if (actualException instanceof FileProcessingException) {
-            var e = (FileProcessingException) actualException;
-            statusCode = e.getStatusCode();
-            title = "File Processing Error";
-            message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
-        } else if (actualException instanceof DatabaseException) {
-            var e = (DatabaseException) actualException;
-            statusCode = e.getStatusCode();
-            title = "Database Error";
-            message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
-        } else if (actualException instanceof ServiceUnavailableException) {
-            var e = (ServiceUnavailableException) actualException;
-            statusCode = e.getStatusCode();
-            title = "Service Unavailable";
-            message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
-        }  else if (actualException instanceof ValidationException) {
-            var e = (ValidationException) actualException;
-            statusCode = e.getStatusCode();
-            title = "File Validation Error";
-            message = environment.isProd() ? e.getProdMessage() : exception.getMessage();
-        } else if (actualException instanceof MongoTimeoutException) {
-            statusCode = Http.Status.SERVICE_UNAVAILABLE;
-            title = "Database Timeout";
-            message = environment.isProd() ? "Database is temporarily unavailable" : exception.getMessage();
-        } else if (actualException instanceof MongoException) {
-            statusCode = Http.Status.BAD_GATEWAY;
-            title = "Database Error";
-            message = environment.isProd() ? "Database error occurred" : exception.getMessage();
-        } else {
-            statusCode = Http.Status.INTERNAL_SERVER_ERROR;
-            title = "Server Error";
-            message = environment.isProd()
-                    ? "An unexpected error occurred. Please try again later."
-                    : exception.getMessage();
+        ErrorHandler errorHandler = errorHandlers.getOrDefault(
+                actualException.getClass(),
+                createDefaultErrorHandler()
+        );
+
+        ErrorDetails errorDetails = errorHandler.handle(actualException);
+        logger.error("Status Code: {}", errorDetails.statusCode());
+
+        return createErrorResponse(
+                errorDetails.title(),
+                getAppropriateMessage(errorDetails.message(), actualException),
+                errorDetails.statusCode()
+        );
+    }
+
+    private Map<Class<? extends Throwable>, ErrorHandler> initializeErrorHandlers() {
+        Map<Class<? extends Throwable>, ErrorHandler> handlers = new HashMap<>();
+
+        handlers.put(ResourceNotFoundException.class,
+                ex -> new ErrorDetails("Resource Not Found", ex.getMessage(), ((ResourceNotFoundException) ex).getStatusCode()));
+
+        handlers.put(InvalidRequestException.class,
+                ex -> new ErrorDetails("Invalid Request", ex.getMessage(), ((InvalidRequestException) ex).getStatusCode()));
+
+        handlers.put(FileProcessingException.class,
+                ex -> new ErrorDetails("File Processing Error", ex.getMessage(), ((FileProcessingException) ex).getStatusCode()));
+
+        handlers.put(DatabaseException.class,
+                ex -> new ErrorDetails("Database Error", ex.getMessage(), ((DatabaseException) ex).getStatusCode()));
+
+        handlers.put(ServiceUnavailableException.class,
+                ex -> new ErrorDetails("Service Unavailable", ex.getMessage(), ((ServiceUnavailableException) ex).getStatusCode()));
+
+        handlers.put(ValidationException.class,
+                ex -> new ErrorDetails("File Validation Error", ex.getMessage(), ((ValidationException) ex).getStatusCode()));
+
+        handlers.put(MongoTimeoutException.class,
+                ex -> new ErrorDetails("Database Timeout", "Database is temporarily unavailable", Http.Status.SERVICE_UNAVAILABLE));
+
+        handlers.put(MongoException.class,
+                ex -> new ErrorDetails("Database Error", "Database error occurred", Http.Status.BAD_GATEWAY));
+
+        return handlers;
+    }
+
+    private ErrorHandler createDefaultErrorHandler() {
+        return ex -> new ErrorDetails(
+                "Server Error",
+                "An unexpected error occurred. Please try again later.",
+                Http.Status.INTERNAL_SERVER_ERROR
+        );
+    }
+
+    private String getAppropriateMessage(String defaultMessage, Throwable exception) {
+        if (environment.isProd()) {
+            if (exception instanceof BaseCustomException) {
+                return ((BaseCustomException) exception).getProdMessage();
+            }
+            return defaultMessage;
         }
+        return exception.getMessage();
+    }
 
-        Logger.error("statusCode Error: " + statusCode);
+    private CompletionStage<Result> createErrorResponse(String title, String message, int statusCode) {
         var errorResponse = Json.toJson(new ErrorResponse(title, message, statusCode));
         return CompletableFuture.completedFuture(
                 Results.status(statusCode, errorResponse)
@@ -99,12 +114,16 @@ public class CustomHttpErrorHandler implements HttpErrorHandler {
     }
 
     private Throwable unwrapException(Throwable e) {
-        if (e instanceof CompletionException) {
-            return unwrapException(e.getCause());
-        }
-        if (e instanceof ExecutionException) {
-            return unwrapException(e.getCause());
+        if (e instanceof CompletionException || e instanceof ExecutionException) {
+            return e.getCause() != null ? unwrapException(e.getCause()) : e;
         }
         return e;
     }
+}
+
+record ErrorDetails(String title, String message, int statusCode) {}
+
+@FunctionalInterface
+interface ErrorHandler {
+    ErrorDetails handle(Throwable exception);
 }

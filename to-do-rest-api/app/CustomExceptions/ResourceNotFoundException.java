@@ -1,18 +1,19 @@
 package CustomExceptions;
 
-public class ResourceNotFoundException extends RuntimeException {
-    private final int statusCode = 404;
-    private final String prodMessage = "Resource not found";
+import play.mvc.Http;
+
+public class ResourceNotFoundException extends BaseCustomException {
+    private static final String DEFAULT_PROD_MESSAGE = "Requested resource was not found";
 
     public ResourceNotFoundException(String message) {
-        super(message);
+        super(message, DEFAULT_PROD_MESSAGE, Http.Status.NOT_FOUND);
     }
 
-    public int getStatusCode() {
-        return statusCode;
+    public ResourceNotFoundException(String message, String prodMessage) {
+        super(message, prodMessage, Http.Status.NOT_FOUND);
     }
 
-    public String getProdMessage() {
-        return prodMessage;
+    public ResourceNotFoundException(String message, String prodMessage, Throwable cause) {
+        super(message, prodMessage, Http.Status.NOT_FOUND, cause);
     }
 }

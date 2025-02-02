@@ -1,18 +1,23 @@
 package CustomExceptions;
 
-public class DatabaseException extends RuntimeException {
-    private final int statusCode = 502;
-    private final String prodMessage = "Database is down";
+import play.mvc.Http;
+
+public class DatabaseException extends BaseCustomException {
+    private static final String DEFAULT_PROD_MESSAGE = "Database is down";
+
+    public DatabaseException(String message) {
+        super(message, DEFAULT_PROD_MESSAGE, Http.Status.BAD_GATEWAY);
+    }
+
+    public DatabaseException(String message, String prodMessage) {
+        super(message, prodMessage, Http.Status.BAD_GATEWAY);
+    }
 
     public DatabaseException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, DEFAULT_PROD_MESSAGE, Http.Status.BAD_GATEWAY, cause);
     }
 
-    public int getStatusCode() {
-        return statusCode;
-    }
-
-    public String getProdMessage() {
-        return prodMessage;
+    public DatabaseException(String message, String prodMessage, Throwable cause) {
+        super(message, prodMessage, Http.Status.BAD_GATEWAY, cause);
     }
 }

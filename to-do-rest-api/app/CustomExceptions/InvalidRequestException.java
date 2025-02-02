@@ -1,18 +1,23 @@
 package CustomExceptions;
 
-public class InvalidRequestException extends RuntimeException {
-  private final int statusCode = 400;
-  private final String prodMessage = "Invalid request";
+import play.mvc.Http;
+
+public class InvalidRequestException extends BaseCustomException {
+  private static final String DEFAULT_PROD_MESSAGE = "Invalid request";
 
   public InvalidRequestException(String message) {
-    super(message);
+    super(message, DEFAULT_PROD_MESSAGE, Http.Status.BAD_REQUEST);
   }
 
-  public int getStatusCode() {
-    return statusCode;
+  public InvalidRequestException(String message, String prodMessage) {
+    super(message, prodMessage, Http.Status.BAD_REQUEST);
   }
 
-    public String getProdMessage() {
-        return prodMessage;
-    }
+  public InvalidRequestException(String message, Throwable cause) {
+    super(message, DEFAULT_PROD_MESSAGE, Http.Status.BAD_REQUEST, cause);
+  }
+
+  public InvalidRequestException(String message, String prodMessage, Throwable cause) {
+    super(message, prodMessage, Http.Status.BAD_REQUEST, cause);
+  }
 }

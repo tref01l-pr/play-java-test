@@ -1,22 +1,23 @@
 package CustomExceptions;
 
-public class FileProcessingException extends RuntimeException {
-    private final int statusCode = 400;
-    private String prodMessage = "File processing failed";
+import play.mvc.Http;
+
+public class FileProcessingException extends BaseCustomException {
+    private static final String DEFAULT_PROD_MESSAGE = "File processing failed";
 
     public FileProcessingException(String message) {
-        super(message);
+        super(message, DEFAULT_PROD_MESSAGE, Http.Status.BAD_REQUEST);
+    }
+
+    public FileProcessingException(String message, String prodMessage) {
+        super(message, prodMessage, Http.Status.BAD_REQUEST);
     }
 
     public FileProcessingException(String message, Throwable cause) {
-        super(message, cause);
+        super(message, DEFAULT_PROD_MESSAGE, Http.Status.BAD_REQUEST, cause);
     }
 
-    public int getStatusCode() {
-        return statusCode;
-    }
-
-    public String getProdMessage() {
-        return prodMessage;
+    public FileProcessingException(String message, String prodMessage, Throwable cause) {
+        super(message, prodMessage, Http.Status.BAD_REQUEST, cause);
     }
 }
