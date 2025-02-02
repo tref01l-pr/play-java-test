@@ -4,6 +4,7 @@ import Contracts.Requests.CreateToDoRequest;
 import Contracts.Requests.UpdateToDoRequest;
 import Contracts.Responses.ToDoResponse;
 import CustomExceptions.*;
+import Factories.ToDoFactory;
 import com.google.inject.Inject;
 import com.mongodb.MongoException;
 import com.mongodb.MongoTimeoutException;
@@ -101,8 +102,13 @@ public class ToDosService {
 
         uploadedFiles = filesService.create(body.getFiles());
 
-        ToDo toDo = ToDo.create(userId, createToDoRequest.getTitle(),
-                createToDoRequest.getDescription(), createToDoRequest.getTags(), uploadedFiles);
+        ToDo toDo = ToDoFactory.createToDo(
+                userId,
+                createToDoRequest.getTitle(),
+                createToDoRequest.getDescription(),
+                createToDoRequest.getTags(),
+                uploadedFiles
+        );
 
         MongoDbToDo createdToDo = toDosStore.create(toDo);
         Logger.info("To-Do created: " + createdToDo.getId());
@@ -144,9 +150,14 @@ public class ToDosService {
                 updateToDoRequest.getFilesMetadata(), existingToDo.getFiles());
         uploadedFiles.addAll(unchangedFiles);
 
-        ToDo updatedToDo = ToDo.create(userId, updateToDoRequest.getTitle(),
-                updateToDoRequest.getDescription(), updateToDoRequest.getTags(), uploadedFiles);
-        updatedToDo.setId(updateToDoRequest.getId());
+        ToDo updatedToDo = ToDoFactory.createUpdatedToDo(
+                updateToDoRequest.getId(),
+                userId,
+                updateToDoRequest.getTitle(),
+                updateToDoRequest.getDescription(),
+                updateToDoRequest.getTags(),
+                uploadedFiles
+        );
 
         MongoDbToDo result = toDosStore.update(updatedToDo);
         Logger.info("To-Do updated: " + result.getId());
