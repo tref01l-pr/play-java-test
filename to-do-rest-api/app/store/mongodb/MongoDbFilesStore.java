@@ -36,82 +36,13 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public class MongoDbFilesStore implements FilesStore {
-    private static final String PNG_FORMAT = "png";
-    private static final String ZIP_EXTENSION = ".zip";
-    private static final String PDF_EXTENSION = ".pdf";
-    private static final String IMAGES_DIR = "images/";
-
     @Inject
     private MongoDb mongoDb;
 
     @Override
     public FileMetadata create(Http.MultipartFormData.FilePart filePart) {
         try {
-            FileMetadata metadata = new FileMetadata();
-            metadata.setFileName(filePart.getFilename());
-            metadata.setFileType(filePart.getContentType());
-
-            File inputFile = ((play.libs.Files.TemporaryFile) filePart.getRef()).path().toFile();
-            metadata.setPdfHash(calculatePdfHash(inputFile));
-            PDDocument document = null;
-
-            try {
-                document = Loader.loadPDF(inputFile);
-
-                List<ObjectId> imageIds = processDocument(document);
-                if (imageIds.isEmpty()) {
-                    throw new FileProcessingException("No images found in PDF");
-                }
-
-                metadata.setImageIds(imageIds);
-                return metadata;
-            } catch (Exception e) {
-                if (!PdfUtils.isActuallyImage(inputFile)) {
-                    throw new FileProcessingException("File is not a PDF");
-                }
-
-                try {
-                    BufferedImage image = ImageIO.read(inputFile);
-                    if (image != null) {
-                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
-                        ImageIO.write(image, "PNG", baos);
-
-                        GridFSUploadOptions options = new GridFSUploadOptions()
-                                .metadata(new Document("contentType", "image/png")
-                                        .append("originalFileName", inputFile.getName())
-                                        .append("convertedFrom", "pdf"));
-
-                        ObjectId fileId;
-                        try (InputStream inputStream = new ByteArrayInputStream(baos.toByteArray())) {
-                            String fileName = inputFile.getName();
-                            String newFileName;
-                            int lastDotIndex = fileName.lastIndexOf(".");
-                            if (lastDotIndex != -1) {
-                                newFileName = fileName.substring(0, lastDotIndex) + ".png";
-                            } else {
-                                newFileName = fileName + ".png";
-                            }
-
-                            fileId = mongoDb.getGridFSBucket().uploadFromStream(
-                                    newFileName,
-                                    inputStream,
-                                    options
-                            );
-                        }
-                        metadata.setImageIds(List.of(fileId));
-                        return metadata;
-                    } else {
-                        throw new FileProcessingException("Failed to read image file: image is null");
-                    }
-                } catch (IOException ex) {
-                    throw new FileProcessingException("Error processing image file: " + ex.getMessage());
-                }
-            }
-            finally {
-                if (document != null) {
-                    document.close();
-                }
-            }
+            return processUploadedFile(filePart);
         } catch (MongoTimeoutException e) {
             Logger.error("Database timeout while creating file metadata", e);
             throw new ServiceUnavailableException("Database is temporarily unavailable", e);
@@ -173,7 +104,68 @@ public class MongoDbFilesStore implements FilesStore {
         }
     }
 
-    private List<ObjectId> processDocument(PDDocument document) throws IOException {
+    private FileMetadata processUploadedFile(Http.MultipartFormData.FilePart filePart) throws IOException, NoSuchAlgorithmException {
+        FileMetadata metadata = createInitialMetadata(filePart);
+        File inputFile = getInputFile(filePart);
+
+        try {
+            return processPdfOrImage(inputFile, metadata);
+        } catch (Exception e) {
+            return handleFailedPdfProcessing(inputFile, metadata, e);
+        }
+    }
+
+    private FileMetadata handleFailedPdfProcessing(File inputFile, FileMetadata metadata, Exception e)
+            throws IOException {
+        if (!PdfUtils.isActuallyImage(inputFile)) {
+            throw new FileProcessingException("File is not a PDF");
+        }
+        return processAsImage(inputFile, metadata);
+    }
+
+    private FileMetadata processAsImage(File inputFile, FileMetadata metadata) throws IOException {
+        BufferedImage image = ImageIO.read(inputFile);
+        if (image == null) {
+            throw new FileProcessingException("Failed to read image file: image is null");
+        }
+
+        ObjectId fileId = saveImageToGridFS(image, inputFile.getName());
+        metadata.setImageIds(List.of(fileId));
+        return metadata;
+    }
+
+    private FileMetadata createInitialMetadata(Http.MultipartFormData.FilePart filePart) {
+        FileMetadata metadata = new FileMetadata();
+        metadata.setFileName(filePart.getFilename());
+        metadata.setFileType(filePart.getContentType());
+        return metadata;
+    }
+
+    private File getInputFile(Http.MultipartFormData.FilePart filePart) {
+        return ((play.libs.Files.TemporaryFile) filePart.getRef()).path().toFile();
+    }
+
+    private FileMetadata processPdfOrImage(File inputFile, FileMetadata metadata)
+            throws IOException, NoSuchAlgorithmException {
+        metadata.setPdfHash(calculatePdfHash(inputFile));
+
+        try (PDDocument document = Loader.loadPDF(inputFile)) {
+            List<ObjectId> imageIds = processDocument(document);
+            if (imageIds.isEmpty()) {
+                throw new FileProcessingException("No images found in PDF");
+            }
+            metadata.setImageIds(imageIds);
+            return metadata;
+        }
+    }
+
+    private String calculatePdfHash(File file) throws IOException, NoSuchAlgorithmException {
+        try (InputStream fileStream = new BufferedInputStream(new FileInputStream(file))) {
+            return PdfUtils.calculatePdfHash(fileStream);
+        }
+    }
+
+    public List<ObjectId> processDocument(PDDocument document) throws IOException {
         List<ObjectId> imageIds = new ArrayList<>();
         List<BufferedImage> images = PdfUtils.convertPDFToImages(document);
 
@@ -185,6 +177,28 @@ public class MongoDbFilesStore implements FilesStore {
         return imageIds;
     }
 
+    public ObjectId saveImageToGridFS(BufferedImage image, String originalFileName) throws IOException {
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        ImageIO.write(image, "PNG", baos);
+
+        GridFSUploadOptions options = new GridFSUploadOptions()
+                .metadata(new Document("contentType", "image/png")
+                        .append("originalFileName", originalFileName)
+                        .append("convertedFrom", "pdf"));
+
+        try (InputStream inputStream = new ByteArrayInputStream(baos.toByteArray())) {
+            String newFileName = createNewFileName(originalFileName);
+            return mongoDb.getGridFSBucket().uploadFromStream(newFileName, inputStream, options);
+        }
+    }
+
+    private String createNewFileName(String originalFileName) {
+        int lastDotIndex = originalFileName.lastIndexOf(".");
+        return lastDotIndex != -1
+                ? originalFileName.substring(0, lastDotIndex) + ".png"
+                : originalFileName + ".png";
+    }
+
     private ObjectId processImage(BufferedImage image, int pageNumber) throws IOException {
         File tempImageFile = null;
         try {
@@ -192,18 +206,15 @@ public class MongoDbFilesStore implements FilesStore {
             ImageIO.write(image, "png", tempImageFile);
 
             try (InputStream imageStream = new BufferedInputStream(new FileInputStream(tempImageFile))) {
-                return mongoDb.getGridFSBucket().uploadFromStream("page-" + pageNumber + ".png", imageStream);
+                return mongoDb.getGridFSBucket().uploadFromStream(
+                        "page-" + pageNumber + ".png",
+                        imageStream
+                );
             }
         } finally {
             if (tempImageFile != null) {
                 tempImageFile.delete();
             }
-        }
-    }
-
-    private String calculatePdfHash(File file) throws IOException, NoSuchAlgorithmException {
-        try (InputStream fileStream = new BufferedInputStream(new FileInputStream(file))) {
-            return PdfUtils.calculatePdfHash(fileStream);
         }
     }
 

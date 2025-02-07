@@ -30,54 +30,6 @@ public class PdfUtils {
         }
     }
 
-    private static PDDocument reconstructFromBinaryData(File file) throws IOException {
-        try (FileInputStream fis = new FileInputStream(file)) {
-            byte[] data = fis.readAllBytes();
-
-            // Convert raw image data into PDF
-            ByteArrayOutputStream pdf = new ByteArrayOutputStream();
-
-            // PDF header
-            pdf.write("%PDF-1.7\n".getBytes());
-
-            // Object 1 - Catalog
-            pdf.write("1 0 obj\n<</Type/Catalog/Pages 2 0 R>>\nendobj\n".getBytes());
-
-            // Object 2 - Pages
-            pdf.write("2 0 obj\n<</Type/Pages/Kids[3 0 R]/Count 1>>\nendobj\n".getBytes());
-
-            // Object 3 - Page
-            pdf.write(("3 0 obj\n<</Type/Page/Parent 2 0 R/Resources<</XObject<</Im0 4 0 R>>" +
-                    "/ProcSet[/PDF/ImageC]>>/MediaBox[0 0 4096 4096]/Contents 5 0 R>>\nendobj\n").getBytes());
-
-            // Object 4 - Image
-            pdf.write(("4 0 obj\n<</Type/XObject/Subtype/Image/Width 4096/Height 4096" +
-                    "/ColorSpace/DeviceRGB/BitsPerComponent 8/Length " + data.length +
-                    "/Filter/DCTDecode>>\nstream\n").getBytes());
-            pdf.write(data);
-            pdf.write("\nendstream\nendobj\n".getBytes());
-
-            // Object 5 - Contents
-            String contents = "q\n4096 0 0 4096 0 0 cm\n/Im0 Do\nQ\n";
-            pdf.write(("5 0 obj\n<</Length " + contents.length() + ">>\nstream\n" + contents + "\nendstream\nendobj\n").getBytes());
-
-            // Cross-reference table
-            long startxref = pdf.size();
-            pdf.write("xref\n0 6\n0000000000 65535 f\n".getBytes());
-            pdf.write(String.format("%010d 00000 n\n", 1).getBytes());
-            pdf.write(String.format("%010d 00000 n\n", 2).getBytes());
-            pdf.write(String.format("%010d 00000 n\n", 3).getBytes());
-            pdf.write(String.format("%010d 00000 n\n", 4).getBytes());
-            pdf.write(String.format("%010d 00000 n\n", 5).getBytes());
-
-            // Trailer
-            pdf.write(("trailer\n<</Size 6/Root 1 0 R>>\nstartxref\n" + startxref + "\n%%EOF").getBytes());
-
-            return Loader.loadPDF(pdf.toByteArray());
-        }
-    }
-
-
     public static List<BufferedImage> convertPDFToImages(PDDocument document) throws IOException {
         List<BufferedImage> images = new ArrayList<>();
         PDFRenderer pdfRenderer = new PDFRenderer(document);
