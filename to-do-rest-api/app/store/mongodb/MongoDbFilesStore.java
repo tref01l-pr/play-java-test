@@ -9,9 +9,12 @@ import com.mongodb.MongoException;
 import com.mongodb.MongoTimeoutException;
 import com.mongodb.client.gridfs.GridFSBucket;
 import com.mongodb.client.gridfs.GridFSDownloadStream;
+import com.mongodb.client.gridfs.model.GridFSUploadOptions;
 import entities.mongodb.MongoDbToDo;
 import models.FileMetadata;
+import org.apache.pdfbox.Loader;
 import org.apache.pdfbox.pdmodel.PDDocument;
+import org.bson.Document;
 import org.bson.types.ObjectId;
 
 import java.nio.file.Files;
@@ -33,6 +36,11 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 
 public class MongoDbFilesStore implements FilesStore {
+    private static final String PNG_FORMAT = "png";
+    private static final String ZIP_EXTENSION = ".zip";
+    private static final String PDF_EXTENSION = ".pdf";
+    private static final String IMAGES_DIR = "images/";
+
     @Inject
     private MongoDb mongoDb;
 
@@ -44,11 +52,11 @@ public class MongoDbFilesStore implements FilesStore {
             metadata.setFileType(filePart.getContentType());
 
             File inputFile = ((play.libs.Files.TemporaryFile) filePart.getRef()).path().toFile();
+            metadata.setPdfHash(calculatePdfHash(inputFile));
             PDDocument document = null;
 
             try {
-                document = PdfUtils.loadAndRepairPDF(inputFile);
-                metadata.setPdfHash(calculatePdfHash(inputFile));
+                document = Loader.loadPDF(inputFile);
 
                 List<ObjectId> imageIds = processDocument(document);
                 if (imageIds.isEmpty()) {
@@ -57,7 +65,49 @@ public class MongoDbFilesStore implements FilesStore {
 
                 metadata.setImageIds(imageIds);
                 return metadata;
-            } finally {
+            } catch (Exception e) {
+                if (!PdfUtils.isActuallyImage(inputFile)) {
+                    throw new FileProcessingException("File is not a PDF");
+                }
+
+                try {
+                    BufferedImage image = ImageIO.read(inputFile);
+                    if (image != null) {
+                        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                        ImageIO.write(image, "PNG", baos);
+
+                        GridFSUploadOptions options = new GridFSUploadOptions()
+                                .metadata(new Document("contentType", "image/png")
+                                        .append("originalFileName", inputFile.getName())
+                                        .append("convertedFrom", "pdf"));
+
+                        ObjectId fileId;
+                        try (InputStream inputStream = new ByteArrayInputStream(baos.toByteArray())) {
+                            String fileName = inputFile.getName();
+                            String newFileName;
+                            int lastDotIndex = fileName.lastIndexOf(".");
+                            if (lastDotIndex != -1) {
+                                newFileName = fileName.substring(0, lastDotIndex) + ".png";
+                            } else {
+                                newFileName = fileName + ".png";
+                            }
+
+                            fileId = mongoDb.getGridFSBucket().uploadFromStream(
+                                    newFileName,
+                                    inputStream,
+                                    options
+                            );
+                        }
+                        metadata.setImageIds(List.of(fileId));
+                        return metadata;
+                    } else {
+                        throw new FileProcessingException("Failed to read image file: image is null");
+                    }
+                } catch (IOException ex) {
+                    throw new FileProcessingException("Error processing image file: " + ex.getMessage());
+                }
+            }
+            finally {
                 if (document != null) {
                     document.close();
                 }

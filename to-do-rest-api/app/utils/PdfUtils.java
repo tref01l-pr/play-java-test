@@ -7,6 +7,7 @@ import org.apache.pdfbox.pdmodel.PDPage;
 import org.apache.pdfbox.pdmodel.common.PDRectangle;
 import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
+import org.apache.tika.Tika;
 import play.Logger;
 
 import java.awt.image.BufferedImage;
@@ -17,11 +18,15 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class PdfUtils {
-    public static PDDocument loadAndRepairPDF(File inputFile) throws IOException {
+    private static final Tika tika = new Tika();
+
+    public static boolean isActuallyImage(File file) {
         try {
-            return Loader.loadPDF(inputFile);
+            String mimeType = tika.detect(file);
+            return mimeType.startsWith("image/");
         } catch (IOException e) {
-            return reconstructFromBinaryData(inputFile);
+            e.printStackTrace();
+            return false;
         }
     }
 
