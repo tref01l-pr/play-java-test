@@ -8,14 +8,8 @@ import jwt.JwtControllerHelperImpl;
 import jwt.JwtValidator;
 import jwt.JwtValidatorImpl;
 import services.MongoDb;
-import store.FilesStore;
-import store.ToDosStore;
-import store.UserSessionsStore;
-import store.UsersStore;
-import store.mongodb.MongoDbFilesStore;
-import store.mongodb.MongoDbToDosStore;
-import store.mongodb.MongoDbUserSessionsStore;
-import store.mongodb.MongoDbUsersStore;
+import store.*;
+import store.mongodb.*;
 
 public class Module extends AbstractModule {
 
@@ -28,5 +22,6 @@ public class Module extends AbstractModule {
         bind(FilesStore.class).to(MongoDbFilesStore.class);
         bind(UserSessionsStore.class).to(MongoDbUserSessionsStore.class);
         bind(ToDosStore.class).to(MongoDbToDosStore.class);
+        bind(TransactionManager.class).to(MongoDbTransactionManager.class);
     }
 }

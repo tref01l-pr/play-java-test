@@ -106,7 +106,7 @@ public class MongoDbFilesStore implements FilesStore {
 
     private FileMetadata processUploadedFile(Http.MultipartFormData.FilePart filePart) throws IOException, NoSuchAlgorithmException {
         FileMetadata metadata = createInitialMetadata(filePart);
-        File inputFile = getInputFile(filePart);
+        File inputFile = PdfUtils.getInputFile(filePart);
 
         try {
             return processPdfOrImage(inputFile, metadata);
@@ -139,10 +139,6 @@ public class MongoDbFilesStore implements FilesStore {
         metadata.setFileName(filePart.getFilename());
         metadata.setFileType(filePart.getContentType());
         return metadata;
-    }
-
-    private File getInputFile(Http.MultipartFormData.FilePart filePart) {
-        return ((play.libs.Files.TemporaryFile) filePart.getRef()).path().toFile();
     }
 
     private FileMetadata processPdfOrImage(File inputFile, FileMetadata metadata)

@@ -29,13 +29,14 @@ public class MongoDb {
         String password = Config.get(Config.Option.MONGODB_PASSWORD);
         String hostname = Config.get(Config.Option.MONGODB_HOSTNAME);
         String database = Config.get(Config.Option.MONGODB_DATABASE);
-        // Don't use TLS by default for local development environments and for MongoDBs in OpenShift containers
+
         Boolean tls = !(Config.getBoolean(Config.Option.MONGODB_DISABLE_TLS) || "localhost".equals(hostname));
         String mongoUrl;
         if (username != null && password != null && !username.isEmpty() && !password.isEmpty()) {
             mongoUrl = "mongodb://" + username + ":" + password + "@" + hostname + ":27017/" + database + "?tls=" + tls.toString().toLowerCase() + "&connecttimeoutms=" + TIMEOUT_CONNECT;
         } else {
-            mongoUrl = "mongodb://" + hostname + ":27017/?tls=" + tls.toString().toLowerCase() + "&connecttimeoutms=" + TIMEOUT_CONNECT;
+            mongoUrl = "mongodb://" + hostname + ":27018/?tls=" + tls.toString().toLowerCase() + "&connecttimeoutms=" + TIMEOUT_CONNECT +
+                    "&replicaSet=rs0";
         }
 
         mongoClient = MongoClients.create(mongoUrl);

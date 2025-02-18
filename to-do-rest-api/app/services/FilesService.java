@@ -3,6 +3,7 @@ package services;
 import Contracts.Requests.FileMetadataRequest;
 import CustomExceptions.DatabaseException;
 import CustomExceptions.ServiceUnavailableException;
+import CustomExceptions.ValidationException;
 import com.google.inject.Inject;
 import com.mongodb.MongoException;
 import com.mongodb.MongoTimeoutException;
@@ -11,6 +12,7 @@ import models.FileMetadata;
 import play.Logger;
 import play.mvc.Http;
 import store.FilesStore;
+import utils.PdfUtils;
 
 import java.io.File;
 import java.util.ArrayList;
@@ -28,6 +30,10 @@ public class FilesService {
     public List<FileMetadata> create(List<Http.MultipartFormData.FilePart<File>> fileParts) {
         try {
             List<FileMetadata> uploadedFiles = new ArrayList<>();
+
+            if (!PdfUtils.IsPdfSplittable(fileParts)) {
+                throw new ValidationException("Only PDF files are allowed");
+            }
 
             for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
                 FileMetadata metadata = create(filePart);
@@ -51,6 +57,11 @@ public class FilesService {
     public List<FileMetadata> uploadFiles(List<Http.MultipartFormData.FilePart<File>> fileParts) {
         try {
             List<FileMetadata> uploadedFiles = new ArrayList<>();
+
+            if (!PdfUtils.IsPdfSplittable(fileParts)) {
+                throw new ValidationException("Only PDF files are allowed");
+            }
+
             for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
                 FileMetadata metadata = filesStore.create(filePart);
                 uploadedFiles.add(metadata);

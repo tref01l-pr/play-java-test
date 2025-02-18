@@ -9,6 +9,7 @@ import org.apache.pdfbox.rendering.ImageType;
 import org.apache.pdfbox.rendering.PDFRenderer;
 import org.apache.tika.Tika;
 import play.Logger;
+import play.mvc.Http;
 
 import java.awt.image.BufferedImage;
 import java.io.*;
@@ -80,5 +81,35 @@ public class PdfUtils {
         }
 
         return sb.toString();
+    }
+
+    public static File getInputFile(Http.MultipartFormData.FilePart filePart) {
+        return ((play.libs.Files.TemporaryFile) filePart.getRef()).path().toFile();
+    }
+
+    public static boolean IsPdfSplittable(List<Http.MultipartFormData.FilePart<File>> fileParts) {
+        for (Http.MultipartFormData.FilePart<File> filePart : fileParts) {
+            if (!IsPdfSplittable(getInputFile(filePart))) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    public static boolean IsPdfSplittable(File file) {
+        try (PDDocument document = Loader.loadPDF(file)) {
+            return document.getNumberOfPages() >= 1;
+        } catch (Exception e) {
+            Logger.error( e.getMessage());
+            try {
+                if (isActuallyImage(file)) {
+                    return true;
+                }
+            } catch (Exception ex) {
+                Logger.error("Error loading PDF file", e);
+            }
+
+            return false;
+        }
     }
 }

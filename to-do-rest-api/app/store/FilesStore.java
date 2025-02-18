@@ -5,8 +5,6 @@ import models.FileMetadata;
 import play.mvc.Http;
 
 import java.io.File;
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
 
 public interface FilesStore {
     FileMetadata create(Http.MultipartFormData.FilePart<File> filePart);

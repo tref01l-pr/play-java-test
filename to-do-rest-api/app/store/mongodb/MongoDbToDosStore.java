@@ -10,6 +10,8 @@ import com.mongodb.client.result.DeleteResult;
 import dev.morphia.query.Query;
 import dev.morphia.query.filters.Filter;
 import dev.morphia.query.filters.Filters;
+import dev.morphia.transactions.MorphiaSession;
+import dev.morphia.transactions.MorphiaTransaction;
 import entities.mongodb.MongoDbToDo;
 import models.ToDo;
 import org.bson.conversions.Bson;
@@ -94,10 +96,9 @@ public class MongoDbToDosStore implements ToDosStore {
     }
 
     @Override
-    public MongoDbToDo create(ToDo model) {
+    public MongoDbToDo create(ToDo model, MorphiaSession session) {
         try {
             MongoDbToDo newToDo = new MongoDbToDo();
-
             newToDo.setUserId(model.getUserId());
             newToDo.setTitle(model.getTitle());
             newToDo.setDescription(model.getDescription());
@@ -105,7 +106,12 @@ public class MongoDbToDosStore implements ToDosStore {
             newToDo.setTags(model.getTags());
             newToDo.setFiles(model.getFiles());
 
-            mongoDb.getDS().save(newToDo);
+            session.save(newToDo);
+
+            /*if (newToDo != null){
+                throw new MongoTimeoutException("Test transaction rollback");
+            }*/
+
             return newToDo;
         } catch (MongoTimeoutException e) {
             Logger.error("Database timeout while creating todo", e);
@@ -116,10 +122,45 @@ public class MongoDbToDosStore implements ToDosStore {
         }
     }
 
-    @Override
-    public MongoDbToDo update(ToDo model) {
+    /*@Override
+    public MongoDbToDo create(ToDo model) {
         try {
-            MongoDbToDo existingToDo = findById(model.getId());
+            MorphiaTransaction<MongoDbToDo> transaction = session -> {
+                MongoDbToDo newToDo = new MongoDbToDo();
+
+                newToDo.setUserId(model.getUserId());
+                newToDo.setTitle(model.getTitle());
+                newToDo.setDescription(model.getDescription());
+                newToDo.setCreatedAt(Date.from(ZonedDateTime.now(ZoneId.systemDefault()).toInstant()));
+                newToDo.setTags(model.getTags());
+                newToDo.setFiles(model.getFiles());
+
+                session.save(newToDo);
+                //throw new RuntimeException("Test transaction rollback");
+                return newToDo;
+            };
+
+            return mongoDb.getDS().withTransaction(transaction);
+
+        } catch (MongoTimeoutException e) {
+            Logger.error("Database timeout while creating todo", e);
+            throw new ServiceUnavailableException("Database is temporarily unavailable", e);
+        } catch (MongoException e) {
+            Logger.error("Database error while creating todo", e);
+            throw new DatabaseException("Error accessing database", e);
+        }
+    }*/
+
+    @Override
+    public MongoDbToDo update(ToDo model, MorphiaSession session) {
+        try {
+            MongoDbToDo existingToDo = session.find(MongoDbToDo.class)
+                    .filter(Filters.eq("_id", model.getId()))
+                    .first();
+
+            if (existingToDo == null) {
+                throw new ResourceNotFoundException("ToDo not found");
+            }
 
             existingToDo.setTitle(model.getTitle());
             existingToDo.setDescription(model.getDescription());
@@ -135,10 +176,13 @@ public class MongoDbToDosStore implements ToDosStore {
             }
 
             if (!updates.isEmpty()) {
-                mongoDb.get().getCollection("todos").updateOne(new org.bson.Document("_id", model.getId()), Updates.combine(updates));
+                session.getDatabase()
+                        .getCollection("todos")
+                        .updateOne(new org.bson.Document("_id", model.getId()),
+                                Updates.combine(updates));
             }
 
-            mongoDb.getDS().merge(existingToDo);
+            session.merge(existingToDo);
             return existingToDo;
         } catch (MongoTimeoutException e) {
             Logger.error("Database timeout while updating todo: " + model.getId(), e);
@@ -150,13 +194,17 @@ public class MongoDbToDosStore implements ToDosStore {
     }
 
     @Override
-    public void removeById(ObjectId id) {
+    public void removeById(ObjectId id, MorphiaSession session) {
         try {
-            MongoDbToDo toDelete = findById(id);
-            DeleteResult result = mongoDb.getDS().delete(toDelete);
-            if (result.getDeletedCount() == 0) {
+            MongoDbToDo toDelete = session.find(MongoDbToDo.class)
+                    .filter(Filters.eq("_id", id))
+                    .first();
+
+            if (toDelete == null) {
                 throw new ResourceNotFoundException("ToDo with ID " + id + " not found.");
             }
+
+            session.delete(toDelete);
         } catch (MongoTimeoutException e) {
             Logger.error("Database timeout while deleting todo: " + id, e);
             throw new ServiceUnavailableException("Database is temporarily unavailable", e);
