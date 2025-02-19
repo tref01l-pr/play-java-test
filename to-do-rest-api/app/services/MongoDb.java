@@ -31,15 +31,32 @@ public class MongoDb {
         String database = Config.get(Config.Option.MONGODB_DATABASE);
 
         Boolean tls = !(Config.getBoolean(Config.Option.MONGODB_DISABLE_TLS) || "localhost".equals(hostname));
-        String mongoUrl;
+
+        StringBuilder mongoUrl = new StringBuilder();
         if (username != null && password != null && !username.isEmpty() && !password.isEmpty()) {
-            mongoUrl = "mongodb://" + username + ":" + password + "@" + hostname + ":27017/" + database + "?tls=" + tls.toString().toLowerCase() + "&connecttimeoutms=" + TIMEOUT_CONNECT;
+            mongoUrl.append(String.format("mongodb://%s:%s@", username, password))
+                    .append(String.join(",", "mongo1:27017", "mongo2:27017", "mongo3:27017"))
+                    .append("/").append(database)
+                    .append("?authSource=admin")
+                    .append("&tls=").append(tls.toString().toLowerCase())
+                    .append("&connectTimeoutMS=").append(TIMEOUT_CONNECT)
+                    .append("&replicaSet=dbrs")
+                    .append("&readPreference=primaryPreferred")
+                    .append("&retryWrites=true")
+                    .append("&w=majority");
         } else {
-            mongoUrl = "mongodb://" + hostname + ":27018/?tls=" + tls.toString().toLowerCase() + "&connecttimeoutms=" + TIMEOUT_CONNECT +
-                    "&replicaSet=rs0";
+            mongoUrl.append("mongodb://")
+                    .append(String.join(",", "mongo1:27017", "mongo2:27017", "mongo3:27017"))
+                    .append("/?")
+                    .append("tls=").append(tls.toString().toLowerCase())
+                    .append("&connectTimeoutMS=").append(TIMEOUT_CONNECT)
+                    .append("&replicaSet=dbrs")
+                    .append("&readPreference=primaryPreferred")
+                    .append("&retryWrites=true")
+                    .append("&w=majority");
         }
 
-        mongoClient = MongoClients.create(mongoUrl);
+        mongoClient = MongoClients.create(mongoUrl.toString());
         db = this.mongoClient.getDatabase(database);
         ds = Morphia.createDatastore(mongoClient, database);
 

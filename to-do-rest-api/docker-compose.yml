@@ -1,0 +1,103 @@
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      - PLAY_SERVER_PROTOCOL=${PLAY_SERVER_PROTOCOL}
+      - PLAY_HTTP_PARSER_MAX_MEMORY_BUFFER=${PLAY_HTTP_PARSER_MAX_MEMORY_BUFFER}
+      - PLAY_HTTP_PARSER_MAX_DISK_BUFFER=${PLAY_HTTP_PARSER_MAX_DISK_BUFFER}
+      - PLAY_HTTP_MAX_CONTENT_LENGTH=${PLAY_HTTP_MAX_CONTENT_LENGTH}
+      - PLAY_SECRET_KEY=${PLAY_SECRET_KEY}
+      - MONGODB_ENABLE=true
+      - MONGODB_DATABASE=${MONGODB_DATABASE}
+      - MONGODB_HOSTNAME=mongodb://mongo1:27017,mongo2:27017,mongo3:27017
+      - MONGODB_USERNAME=${MONGODB_USERNAME}
+      - MONGODB_PASSWORD=${MONGODB_PASSWORD}
+      - MONGODB_DISABLE_TLS=true
+
+      - play.filters.cors.allowedOrigins=[
+        "http://localhost:5173",
+        "http://localhost:5174",
+        "http://localhost:9000"
+        ]
+      - play.filters.cors.allowedHttpMethods=[
+        "GET", "POST", "PUT", "DELETE", "OPTIONS"
+        ]
+      - play.filters.cors.allowedHttpHeaders=[
+        "Accept", "Authorization", "Content-Type", "Origin",
+        "User-Agent", "DNT", "Cache-Control",
+        "X-Requested-With", "X-CSRF-Token"
+        ]
+      - CORS_SUPPORTS_CREDENTIALS=${CORS_SUPPORTS_CREDENTIALS}
+      - CORS_PREFLIGHT_MAX_AGE=${CORS_PREFLIGHT_MAX_AGE}
+      - USER_EXPIRES=${USER_EXPIRES}
+      - USER_SESSION_EXPIRES=${USER_SESSION_EXPIRES}
+      - USER_ACCESS_TOKEN_EXPIRES=${USER_ACCESS_TOKEN_EXPIRES}
+    ports:
+      - "9000:9000"
+    depends_on:
+      - mongo1
+    networks:
+      - app-network
+      - mongo-network
+
+  mongo1:
+    container_name: mongo1
+    image: mongo:4.4
+    volumes:
+      - ./scripts/rs-init.sh:/scripts/rs-init.sh
+      - ./scripts/init.js:/scripts/init.js
+    networks:
+      - mongo-network
+    ports:
+      - 27017:27017
+    depends_on:
+      - mongo2
+      - mongo3
+    links:
+      - mongo2
+      - mongo3
+    restart: always
+    entrypoint: [ "/usr/bin/mongod", "--bind_ip_all", "--replSet", "dbrs" ]
+
+  mongo2:
+    container_name: mongo2
+    image: mongo:4.4
+    networks:
+      - mongo-network
+    ports:
+      - 27018:27017
+    restart: always
+    entrypoint: [ "/usr/bin/mongod", "--bind_ip_all", "--replSet", "dbrs" ]
+  mongo3:
+    container_name: mongo3
+    image: mongo:4.4
+    networks:
+      - mongo-network
+    ports:
+      - 27019:27017
+    restart: always
+    entrypoint: [ "/usr/bin/mongod", "--bind_ip_all", "--replSet", "dbrs" ]
+
+  nginx:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./docker/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - app
+    networks:
+      - app-network
+
+networks:
+  app-network:
+    driver: bridge
+  mongo-network:
+    driver: bridge
+
+volumes:
+  mongo1_data:
+  mongo2_data:
+  mongo3_data:
